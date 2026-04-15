@@ -362,6 +362,7 @@
     .cal-day.empty { color: var(--muted); cursor: default; }
     .cal-day.booked { background: rgba(245,200,66,0.2); color: var(--accent); font-weight: 600; }
     .cal-day.today { border: 1px solid var(--accent2); }
+    .cal-day.past { opacity: 0.35; cursor: not-allowed; }
 
     /* Admin panel */
     .admin-panel { display: none; }
@@ -626,12 +627,12 @@
       <div class="card">
         <div class="card-title">📅 Sala de Juntas</div>
         <div class="card-desc">Reserva horas disponibles para reuniones, conferencias y sesiones de trabajo.</div>
-        <button class="card-btn blue" onclick="openReservationModal('sala-juntas')">Ver calendario</button>
+        <button class="card-btn blue" onclick="openCalendarView('sala-juntas')">Ver calendario</button>
       </div>
       <div class="card">
         <div class="card-title">🎬 Sala Cine / Didáctica</div>
         <div class="card-desc">Espacio para talleres, exposiciones, presentaciones y eventos especiales.</div>
-        <button class="card-btn" onclick="openReservationModal('sala-cine')">Reservar espacio</button>
+        <button class="card-btn" onclick="openCalendarView('sala-cine')">Ver calendario</button>
       </div>
       <div class="card">
         <div class="card-title">💳 Estado de Cuenta</div>
@@ -1018,6 +1019,117 @@
       <div class="modal-actions">
         <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
         <button class="modal-btn primary" onclick="submitReservation('${space}')">Reservar</button>
+      </div>
+    `);
+  };
+
+  // ── Calendar view ────────────────────────────────────────────────────────
+  let calYear = new Date().getFullYear();
+  let calMonth = new Date().getMonth();
+  let calSpace = 'sala-juntas';
+  let calData = {};
+
+
+  window.openCalendarView = (space) => {
+    calSpace = space;
+    const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Sala Cine / Didáctica' };
+    calYear = new Date().getFullYear();
+    calMonth = new Date().getMonth();
+    calData = {};
+    const unsub = onValue(ref(db, 'reservations'), snap => {
+      calData = {};
+      if (snap.exists()) {
+        Object.entries(snap.val()).forEach(([k, r]) => {
+          if (r.space === space && r.status === 'active') {
+            const d = new Date(r.startTime);
+            const key = d.toISOString().split('T')[0];
+            if (!calData[key]) calData[key] = [];
+            calData[key].push(r);
+          }
+        });
+      }
+      unsub();
+      showCalendarModal(types[space] || space);
+    });
+  };
+
+  window.showCalendarModal = (title) => {
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const firstDay = new Date(calYear, calMonth, 1).getDay();
+    const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    let cells = '';
+    for (let i = 0; i < firstDay; i++) cells += '<div class="cal-day empty"></div>';
+    const today = new Date().toISOString().split('T')[0];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const isToday = dateStr === today;
+      const isPast = dateStr < today;
+      const hasRes = !isPast && calData[dateStr] && calData[dateStr].length > 0;
+      const classes = 'cal-day' + (isToday ? ' today' : '') + (hasRes ? ' booked' : '') + (isPast ? ' past' : '');
+      cells += `<div class="${classes}" onclick="${isPast ? '' : `selectCalDay('${dateStr}')`}">${d}</div>`;
+    }
+    openModal(title, `
+      <div class="calendar-header">
+        <button class="cal-nav" onclick="calNav(-1)">‹</button>
+        <div class="cal-month">${monthNames[calMonth]} ${calYear}</div>
+        <button class="cal-nav" onclick="calNav(1)">›</button>
+      </div>
+      <div class="cal-grid">
+        ${dayNames.map(n => `<div class="cal-day-name">${n}</div>`).join('')}
+        ${cells}
+      </div>
+      <div id="calDayDetail" style="margin-top:16px"></div>
+    `);
+  };
+
+
+  window.calNav = (dir) => {
+    calMonth += dir;
+    if (calMonth > 11) { calMonth = 0; calYear++; }
+    if (calMonth < 0) { calMonth = 11; calYear--; }
+    showCalendarModal(document.getElementById('modalTitle').textContent);
+  };
+
+  window.selectCalDay = (dateStr) => {
+    const detail = document.getElementById('calDayDetail');
+    const reservations = calData[dateStr] || [];
+    const bookedHours = reservations.map(r => new Date(r.startTime).getHours());
+    const allHours = Array.from({length: 12}, (_, i) => i + 8);
+    let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${dateStr} — ${reservations.length} reservación(es)</div>`;
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">';
+    allHours.forEach(h => {
+      const booked = bookedHours.includes(h);
+      const time = `${String(h).padStart(2,'0')}:00`;
+      html += `<button class="card-btn" style="font-size:12px;padding:6px${booked ? ';opacity:0.4;cursor:not-allowed' : ''}" ${booked ? 'disabled' : `onclick="openQuickReserve('${dateStr}',${h})"`}>${time}${booked ? '<br><small style="color:var(--red)">ocupado</small>' : ''}</button>`;
+    });
+    html += '</div>';
+    detail.innerHTML = html;
+  };
+
+  window.openQuickReserve = (date, hour) => {
+    closeModal();
+    const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Sala Cine / Didáctica' };
+    openModal(types[calSpace] || calSpace, `
+      <div class="form-group">
+        <label class="form-label">Fecha</label>
+        <input type="date" class="form-input" id="resDate" value="${date}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hora de inicio</label>
+        <input type="time" class="form-input" id="resTime" value="${String(hour).padStart(2,'0')}:00" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Duración (horas)</label>
+        <input type="number" class="form-input" id="resHours" min="1" value="1" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas (opcional)</label>
+        <input type="text" class="form-input" id="resNotes" placeholder="Ej: Reunión con cliente" />
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+        <button class="modal-btn primary" onclick="submitReservation('${calSpace}')">Reservar</button>
       </div>
     `);
   };
