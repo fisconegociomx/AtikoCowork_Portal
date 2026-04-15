@@ -614,16 +614,17 @@
   <div class="dashboard" id="dashboardSection">
     <div class="dash-header">
       <div class="dash-greeting" id="dashGreeting">Hola</div>
-      <div class="dash-sub">Aquí está tu resumen</div>
+      <div class="dash-sub" id="dashSub">Aqui esta tu resumen</div>
     </div>
 
+    <div id="memberStatusBadge" style="display:none;margin-bottom:16px;text-align:center"></div>
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">Espacios reservados</div>
         <div class="stat-value accent" id="statReservas">0</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Próximo evento</div>
+        <div class="stat-label">Proximo evento</div>
         <div class="stat-value" id="statProximo">—</div>
       </div>
       <div class="stat-card">
@@ -636,7 +637,38 @@
       </div>
     </div>
 
-    <div class="section-title" id="membershipBanner" style="display:none">
+    <div id="memberHoursSection" style="display:none">
+      <div class="section-title">Mis horas disponibles</div>
+      <div class="cards-grid" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-title">📅 Sala de Juntas</div>
+          <div id="hoursSJ" class="stat-value accent" style="font-size:32px;margin:8px 0">—</div>
+          <div class="stat-label" style="color:var(--text2);font-size:11px">horas restantes este mes</div>
+        </div>
+        <div class="card">
+          <div class="card-title">🔍 Vision Room</div>
+          <div id="hoursVR" class="stat-value accent" style="font-size:32px;margin:8px 0">—</div>
+          <div class="stat-label" style="color:var(--text2);font-size:11px">horas restantes este mes</div>
+        </div>
+      </div>
+    </div>
+    <div id="nonMemberPricing" style="display:none">
+      <div class="section-title">Tarifas para no miembros</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-title">📅 Sala de Juntas</div>
+          <div class="card-desc">Precio por hora para no miembros</div>
+          <div style="font-size:22px;font-weight:700;color:var(--accent);margin:8px 0">$450 MXN <span style="font-size:13px;font-weight:400;color:var(--text2)">+ IVA / hora</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">🔍 Vision Room</div>
+          <div class="card-desc">Precio por hora para no miembros</div>
+          <div style="font-size:22px;font-weight:700;color:var(--accent);margin:8px 0">$1,500 MXN <span style="font-size:13px;font-weight:400;color:var(--text2)">+ IVA / hora</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title" id="membershipBanner" style="display:none"> style="display:none">
       <div class="membership-cta">
         <div>
           <div class="membership-cta-title">¿Ya eres miembro de AtikoCowork?</div>
@@ -903,19 +935,23 @@
   window.updateMemberStats = (uid, data) => {
     const isMember = data.contractStatus === 'approved' || !!data.contractFolio;
     const badge = document.getElementById('memberStatusBadge');
+    const dashSub = document.getElementById('dashSub');
+    const memberHoursSection = document.getElementById('memberHoursSection');
+    const nonMemberPricing = document.getElementById('nonMemberPricing');
+    if (!badge) { console.warn('memberStatusBadge not found'); return; }
     if (isMember) {
       badge.style.display = 'block';
       badge.innerHTML = '<span style="display:inline-block;padding:4px 12px;background:rgba(34,197,94,0.15);color:var(--green);border-radius:20px;font-size:12px;font-weight:600">● Miembro</span>';
-      document.getElementById('dashSub').textContent = 'Tu membresía: ' + (data.clase || data.contractTipo || 'Activa');
-      document.getElementById('memberHoursSection').style.display = 'block';
-      document.getElementById('nonMemberPricing').style.display = 'none';
+      if (dashSub) dashSub.textContent = 'Tu membresia: ' + (data.clase || data.contractTipo || 'Activa');
+      if (memberHoursSection) memberHoursSection.style.display = 'block';
+      if (nonMemberPricing) nonMemberPricing.style.display = 'none';
       loadMemberHours(uid, data.clase || data.contractTipo);
     } else {
       badge.style.display = 'block';
       badge.innerHTML = '<span style="display:inline-block;padding:4px 12px;background:rgba(239,68,68,0.15);color:var(--red);border-radius:20px;font-size:12px;font-weight:600">● No miembro</span>';
-      document.getElementById('dashSub').textContent = 'Registra tu membresía para acceder a horas gratuitas';
-      document.getElementById('memberHoursSection').style.display = 'none';
-      document.getElementById('nonMemberPricing').style.display = 'block';
+      if (dashSub) dashSub.textContent = 'Registra tu membresia para acceder a horas gratuitas';
+      if (memberHoursSection) memberHoursSection.style.display = 'none';
+      if (nonMemberPricing) nonMemberPricing.style.display = 'block';
     }
   };
 
