@@ -363,6 +363,20 @@
     .cal-day.booked { background: rgba(245,200,66,0.2); color: var(--accent); font-weight: 600; }
     .cal-day.today { border: 1px solid var(--accent2); }
     .cal-day.past { opacity: 0.35; cursor: not-allowed; }
+    .membership-cta {
+      background: linear-gradient(135deg, rgba(245,200,66,0.08), rgba(79,142,247,0.08));
+      border: 1px solid rgba(245,200,66,0.2);
+      border-radius: 14px;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .membership-cta-title { font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+    .membership-cta-sub { font-size: 13px; color: var(--text2); }
+    @media (max-width: 600px) { .membership-cta { flex-direction: column; text-align: center; } }
 
     /* Admin panel */
     .admin-panel { display: none; }
@@ -622,6 +636,16 @@
       </div>
     </div>
 
+    <div class="section-title" id="membershipBanner" style="display:none">
+      <div class="membership-cta">
+        <div>
+          <div class="membership-cta-title">¿Ya eres miembro de AtikoCowork?</div>
+          <div class="membership-cta-sub">Si ya tienes contrato, registra tu membresía para acceder a tus espacios</div>
+        </div>
+        <button class="card-btn" onclick="openMembershipForm()">Registrar mi membresía →</button>
+      </div>
+    </div>
+
     <div class="section-title">Reservaciones</div>
     <div class="cards-grid">
       <div class="card">
@@ -679,6 +703,7 @@
       <button class="admin-tab active" onclick="switchAdminTab('miembros')">Miembros</button>
       <button class="admin-tab" onclick="switchAdminTab('espacios')">Espacios</button>
       <button class="admin-tab" onclick="switchAdminTab('reservas')">Reservas</button>
+      <button class="admin-tab" onclick="switchAdminTab('solicitudes')">Solicitudes</button>
       <button class="admin-tab" onclick="switchAdminTab('avisos')">Avisos</button>
     </div>
 
@@ -711,6 +736,15 @@
         <table class="admin-table">
           <thead><tr><th>Espacio</th><th>Cliente</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="adminReservasBody"><tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="admin-section" id="tab-solicitudes">
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Nombre</th><th>Folio</th><th>Tipo</th><th>Clase</th><th>Docs</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody id="adminSolicitudesBody"><tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -860,16 +894,21 @@
     get(ref(db, 'users/' + user.uid)).then(snap => {
       let name = (user.email || '').split('@')[0];
       let isAdmin = false;
-      let rfc = '', domicilio = '', telefono = '', plan = 'miembro';
       if (snap.exists()) {
         const data = snap.val();
         name = data.name || data.firstName + ' ' + data.lastName || name;
         isAdmin = data.isAdmin || false;
-        rfc = data.rfc || '';
-        domicilio = data.domicilio || '';
-        telefono = data.telefono || '';
-        plan = data.plan || 'miembro';
         document.getElementById('statFecha').textContent = data.createdAt ? new Date(data.createdAt).toLocaleDateString('es-MX', {year:'numeric',month:'short'}) : '—';
+        // Show membership banner if user has no contract/membership registered
+        const banner = document.getElementById('membershipBanner');
+        if (banner && !data.contractFolio) {
+          banner.style.display = 'block';
+        } else if (banner) {
+          banner.style.display = 'none';
+        }
+      } else {
+        const banner = document.getElementById('membershipBanner');
+        if (banner) banner.style.display = 'block';
       }
       document.getElementById('dashGreeting').textContent = 'Hola, ' + name;
       if (isAdmin) document.getElementById('adminBtn').style.display = 'block';
@@ -877,6 +916,8 @@
       loadUserStats(user.uid);
     }).catch(() => {
       document.getElementById('dashGreeting').textContent = 'Hola, ' + (user.email || '').split('@')[0];
+      const banner = document.getElementById('membershipBanner');
+      if (banner) banner.style.display = 'block';
       loadNotices();
       loadUserStats(user.uid);
     });
@@ -978,6 +1019,52 @@
       }
       document.getElementById('adminNoticesBody').innerHTML = html || '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Sin avisos publicados</td></tr>';
     });
+    onValue(ref(db, 'membershipApplications'), snap => {
+      let html = '';
+      if (snap.exists()) {
+        Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, a]) => {
+          const d = new Date(a.createdAt).toLocaleDateString('es-MX', {year:'numeric',month:'short',day:'numeric'});
+          const docsList = [];
+          if (a.docs) {
+            if (a.docs.ine) docsList.push('INE');
+            if (a.docs.constancia) docsList.push('CONSTANCIA');
+            if (a.docs.contrato) docsList.push('CONTRATO');
+            if (a.docs.reglamento) docsList.push('REGLAMENTO');
+          }
+          const docsStr = docsList.length ? docsList.join(', ') : 'Ninguno';
+          const tipoMap = { oficina: 'Oficina', membresia: 'Membresía' };
+          const statusBadge = a.status === 'approved'
+            ? '<span class="badge paid">Aprobada</span>'
+            : a.status === 'rejected'
+            ? '<span class="badge overdue">Rechazada</span>'
+            : '<span class="badge pending">Pendiente</span>';
+          html += `<tr>
+            <td>${a.nombre || '—'}</td>
+            <td style="color:var(--accent)">${a.folio || '—'}</td>
+            <td>${tipoMap[a.tipo] || a.tipo || '—'}</td>
+            <td>${a.clase || '—'}</td>
+            <td><small style="color:var(--text2)">${docsStr}</small></td>
+            <td>${statusBadge}</td>
+            <td>
+              ${a.status === 'pending' ? `
+                <button class="action-btn" style="color:var(--green)" onclick="approveApplication('${k}')">✓ Aprobar</button>
+                <button class="action-btn" style="color:var(--red)" onclick="rejectApplication('${k}')">✗ Rechazar</button>
+              ` : '<small style="color:var(--muted)">—</small>'}
+            </td>
+          </tr>`;
+        });
+      }
+      document.getElementById('adminSolicitudesBody').innerHTML = html || '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">Sin solicitudes pendientes</td></tr>';
+    });
+  };
+
+  window.approveApplication = (k) => {
+    update(ref(db, `membershipApplications/${k}`), { status: 'approved' })
+      .then(() => { showToast('Solicitud aprobada ✅', 'success'); loadAdminData(); });
+  };
+  window.rejectApplication = (k) => {
+    update(ref(db, `membershipApplications/${k}`), { status: 'rejected' })
+      .then(() => { showToast('Solicitud rechazada', 'error'); loadAdminData(); });
   };
 
   window.switchAdminTab = (tab) => {
@@ -1154,7 +1241,120 @@
     });
   };
 
-  // ── Admin modals ─────────────────────────────────────────────────────────
+  // ── Membership registration ───────────────────────────────────────────
+  window.openMembershipForm = () => {
+    openModal('Registrar mi Membresía', `
+      <div class="form-group">
+        <label class="form-label">Nombre completo</label>
+        <input type="text" class="form-input" id="memNombre" placeholder="Nombre(s) Apellido(s)" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Número de usuarios en la empresa</label>
+        <input type="number" class="form-input" id="memNumUsuarios" placeholder="Ej: 5" min="1" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Folio de contrato</label>
+        <input type="text" class="form-input" id="memFolio" placeholder="Ej: ATK-2025-001" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo de membresía</label>
+        <select class="form-input" id="memTipo">
+          <option value="">Selecciona tipo...</option>
+          <option value="oficina">Oficina Privada</option>
+          <option value="membresia">Membresía</option>
+        </select>
+      </div>
+      <div class="form-group" id="memClaseGroup" style="display:none">
+        <label class="form-label">Clase</label>
+        <select class="form-input" id="memClase">
+          <option value="">Selecciona clase...</option>
+          <option value="oficina-1">Oficina #1</option>
+          <option value="oficina-2">Oficina #2</option>
+          <option value="oficina-3">Oficina #3</option>
+          <option value="oficina-4">Oficina #4</option>
+          <option value="oficina-5">Oficina #5</option>
+          <option value="oficina-6">Oficina #6</option>
+          <option value="membresia-access">Membresía Access (escritorio compartido)</option>
+          <option value="membresia-advanced">Membresía Advanced (oficina fija)</option>
+          <option value="membresia-focus">Membresía Focus Room (sala privada)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Correo electrónico</label>
+        <input type="email" class="form-input" id="memEmail" placeholder="correo@empresa.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Teléfono de contacto</label>
+        <input type="tel" class="form-input" id="memTelefono" placeholder="+52 444 123 4567" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Documentos recibido</label>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="docINE" /> INE del representante legal
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="docCONSTANCIA" /> Constancia de situación fiscal
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="docCONTRATO" /> Contrato firmado
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="docREGLAMENTO" /> Reglamento interno firmado
+          </label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+        <button class="modal-btn primary" onclick="submitMembershipForm()">Enviar solicitud</button>
+      </div>
+    `);
+    document.getElementById('memTipo').addEventListener('change', function() {
+      const claseGroup = document.getElementById('memClaseGroup');
+      claseGroup.style.display = this.value ? 'block' : 'none';
+    });
+  };
+
+
+  window.submitMembershipForm = () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const nombre = document.getElementById('memNombre').value.trim();
+    const numUsuarios = document.getElementById('memNumUsuarios').value;
+    const folio = document.getElementById('memFolio').value.trim();
+    const tipo = document.getElementById('memTipo').value;
+    const clase = document.getElementById('memClase').value;
+    const email = document.getElementById('memEmail').value.trim();
+    const telefono = document.getElementById('memTelefono').value.trim();
+    if (!nombre || !folio || !tipo) { showToast('Completa los campos obligatorios', 'error'); return; }
+    const docs = {
+      ine: document.getElementById('docINE').checked,
+      constancia: document.getElementById('docCONSTANCIA').checked,
+      contrato: document.getElementById('docCONTRATO').checked,
+      reglamento: document.getElementById('docREGLAMENTO').checked,
+    };
+    const application = {
+      userId: user.uid,
+      nombre,
+      numUsuarios,
+      folio,
+      tipo,
+      clase,
+      email,
+      telefono,
+      docs,
+      status: 'pending',
+      createdAt: Date.now(),
+    };
+    push(ref(db, 'membershipApplications'), application).then(() => {
+      closeModal();
+      showToast('Solicitud enviada con éxito ✅\nTe contactaremos pronto', 'success');
+      // Update user profile with contract folio so banner doesn't show again
+      update(ref(db, 'users/' + user.uid), { contractFolio: folio, contractTipo: tipo });
+      document.getElementById('membershipBanner').style.display = 'none';
+    });
+  };
+
   window.openAddUserModal = () => {
     openModal('Agregar miembro', `
       <div class="form-group">
