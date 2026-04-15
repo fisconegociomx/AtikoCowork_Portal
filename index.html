@@ -890,6 +890,54 @@
   });
 
   // ── Load user data ───────────────────────────────────────────────────────
+  window.hoursAllowance = {
+    'oficina-1': { sala: 14, vision: 14 }, 'oficina-2': { sala: 14, vision: 14 },
+    'oficina-3': { sala: 14, vision: 14 }, 'oficina-4': { sala: 14, vision: 14 },
+    'oficina-5': { sala: 14, vision: 14 }, 'oficina-6': { sala: 14, vision: 14 },
+    'oficina': { sala: 14, vision: 14 },
+    'membresia-access': { sala: 10, vision: 10 },
+    'membresia-advanced': { sala: 12, vision: 12 },
+    'membresia-focus': { sala: 14, vision: 14 },
+  };
+
+  window.updateMemberStats = (uid, data) => {
+    const isMember = data.contractStatus === 'approved';
+    const badge = document.getElementById('memberStatusBadge');
+    if (isMember) {
+      badge.style.display = 'block';
+      badge.innerHTML = '<span style="display:inline-block;padding:4px 12px;background:rgba(34,197,94,0.15);color:var(--green);border-radius:20px;font-size:12px;font-weight:600">● Miembro</span>';
+      document.getElementById('dashSub').textContent = 'Tu membresía: ' + (data.clase || data.contractTipo || 'Activa');
+      document.getElementById('memberHoursSection').style.display = 'block';
+      document.getElementById('nonMemberPricing').style.display = 'none';
+      loadMemberHours(uid, data.clase || data.contractTipo);
+    } else {
+      badge.style.display = 'block';
+      badge.innerHTML = '<span style="display:inline-block;padding:4px 12px;background:rgba(239,68,68,0.15);color:var(--red);border-radius:20px;font-size:12px;font-weight:600">● No miembro</span>';
+      document.getElementById('dashSub').textContent = 'Registra tu membresía para acceder a horas gratuitas';
+      document.getElementById('memberHoursSection').style.display = 'none';
+      document.getElementById('nonMemberPricing').style.display = 'block';
+    }
+  };
+
+  window.loadMemberHours = (uid, membershipClase) => {
+    const allowance = window.hoursAllowance[membershipClase] || { sala: 0, vision: 0 };
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    get(ref(db, 'reservations')).then(snap => {
+      let salaUsed = 0, visionUsed = 0;
+      if (snap.exists()) {
+        Object.entries(snap.val()).forEach(([k, r]) => {
+          if (r.userId !== uid || r.status !== 'active' || r.startTime < monthStart) return;
+          const duration = ((r.endTime || r.startTime) - r.startTime) / 3600000;
+          if (r.space === 'sala-juntas') salaUsed += duration;
+          else if (r.space === 'sala-cine') visionUsed += duration;
+        });
+      }
+      document.getElementById('hoursSJ').textContent = Math.max(0, allowance.sala - salaUsed) + ' hrs';
+      document.getElementById('hoursVR').textContent = Math.max(0, allowance.vision - visionUsed) + ' hrs';
+    });
+  };
+
   window.loadUserData = (user) => {
     get(ref(db, 'users/' + user.uid)).then(snap => {
       let name = (user.email || '').split('@')[0];
@@ -906,9 +954,12 @@
         } else if (banner) {
           banner.style.display = 'none';
         }
+        if (data.contractFolio) data.contractStatus = 'approved';
+        updateMemberStats(user.uid, data);
       } else {
         const banner = document.getElementById('membershipBanner');
         if (banner) banner.style.display = 'block';
+        updateMemberStats(user.uid, { contractStatus: 'none' });
       }
       document.getElementById('dashGreeting').textContent = 'Hola, ' + name;
       if (isAdmin) document.getElementById('adminBtn').style.display = 'block';
@@ -918,6 +969,7 @@
       document.getElementById('dashGreeting').textContent = 'Hola, ' + (user.email || '').split('@')[0];
       const banner = document.getElementById('membershipBanner');
       if (banner) banner.style.display = 'block';
+      updateMemberStats(user.uid, { contractStatus: 'none' });
       loadNotices();
       loadUserStats(user.uid);
     });
@@ -1059,8 +1111,16 @@
   };
 
   window.approveApplication = (k) => {
-    update(ref(db, `membershipApplications/${k}`), { status: 'approved' })
-      .then(() => { showToast('Solicitud aprobada ✅', 'success'); loadAdminData(); });
+    get(ref(db, `membershipApplications/${k}`)).then(snap => {
+      if (!snap.exists()) return;
+      const app = snap.val();
+      const updates = { status: 'approved' };
+      const userUpdates = { contractStatus: 'approved', contractFolio: app.folio || '', contractTipo: app.tipo || '', contractClase: app.clase || '', plan: app.tipo || 'miembro' };
+      Promise.all([
+        update(ref(db, `membershipApplications/${k}`), updates),
+        app.userId ? update(ref(db, `users/${app.userId}`), userUpdates) : Promise.resolve(),
+      ]).then(() => { showToast('Solicitud aprobada ✅\nEl miembro ya puede usar sus horas', 'success'); loadAdminData(); });
+    });
   };
   window.rejectApplication = (k) => {
     update(ref(db, `membershipApplications/${k}`), { status: 'rejected' })
