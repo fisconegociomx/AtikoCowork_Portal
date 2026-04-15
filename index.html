@@ -713,7 +713,7 @@
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Nombre</th><th>Email</th><th>Plan</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Email</th><th>Plan</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="adminMembersBody"><tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</td></tr></tbody>
         </table>
       </div>
@@ -1036,10 +1036,14 @@
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, u]) => {
-          html += `<tr><td>${u.name || '—'}</td><td>${u.email || k}</td><td>${u.plan || '—'}</td><td><button class="action-btn" onclick="editUser('${k}')">Editar</button></td></tr>`;
+          const isMember = u.contractStatus === 'approved';
+          const statusBadge = isMember
+            ? '<span class="badge paid">● Miembro</span>'
+            : '<span class="badge pending">○ No miembro</span>';
+          html += `<tr><td>${u.name || '—'}</td><td>${u.email || k}</td><td>${u.plan || '—'}</td><td>${statusBadge}</td><td><button class="action-btn" onclick="editUser('${k}')">Editar</button></td></tr>`;
         });
       }
-      document.getElementById('adminMembersBody').innerHTML = html || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Sin miembros aún</td></tr>';
+      document.getElementById('adminMembersBody').innerHTML = html || '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">Sin miembros aún</td></tr>';
     });
     get(ref(db, 'spaces')).then(snap => {
       let html = '';
