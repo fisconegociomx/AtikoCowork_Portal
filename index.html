@@ -561,13 +561,31 @@
       <div class="auth-title">AtikoCowork</div>
       <div class="auth-subtitle">Portal de miembros</div>
       <div class="auth-error" id="authError"></div>
+      <div id="regExtraFields" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Nombre(s)</label>
+          <input type="text" class="form-input" id="regNombre" placeholder="Nombre" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Apellido(s)</label>
+          <input type="text" class="form-input" id="regApellido" placeholder="Apellido" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Domicilio</label>
+          <input type="text" class="form-input" id="regDomicilio" placeholder="Calle, número, colonia, ciudad" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">RFC</label>
+          <input type="text" class="form-input" id="regRFC" placeholder="XAXX000101XXX" />
+        </div>
+      </div>
       <div class="form-group">
         <label class="form-label">Correo electrónico</label>
         <input type="email" class="form-input" id="authEmail" placeholder="tu@correo.com" />
       </div>
       <div class="form-group">
         <label class="form-label">Contraseña</label>
-        <input type="password" class="form-input" id="authPassword" placeholder="••••••••" />
+        <input type="password" class="form-input" id="authPassword" placeholder="Mínimo 6 caracteres" />
       </div>
       <button class="auth-btn" id="authBtn" onclick="doLogin()">Entrar</button>
       <button class="auth-btn secondary" id="authToggle" onclick="toggleAuth()">Crear cuenta</button>
@@ -752,6 +770,14 @@
     document.getElementById('authToggle').textContent = isLogin ? 'Crear cuenta' : 'Ya tengo cuenta';
     document.getElementById('authToggleLink').textContent = isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Entra';
     document.getElementById('authError').style.display = 'none';
+    document.getElementById('regExtraFields').style.display = isLogin ? 'none' : 'block';
+    if (isLogin) {
+      // Clear reg fields when switching to login
+      document.getElementById('regNombre').value = '';
+      document.getElementById('regApellido').value = '';
+      document.getElementById('regDomicilio').value = '';
+      document.getElementById('regRFC').value = '';
+    }
   };
 
   window.doLogin = () => {
@@ -759,10 +785,41 @@
     const password = document.getElementById('authPassword').value;
     const btn = document.getElementById('authBtn');
     if (!email || !password) { showError('Completa todos los campos'); return; }
-    btn.disabled = true; btn.textContent = 'Cargando...';
-    const op = isLogin ? signInWithEmailAndPassword(auth, email, password) : createUserWithEmailAndPassword(auth, email, password);
-    op.then(() => { window.location.reload(); })
-      .catch(e => { showError(friendlyError(e.code)); btn.disabled = false; btn.textContent = isLogin ? 'Entrar' : 'Crear cuenta'; });
+
+    if (isLogin) {
+      btn.disabled = true; btn.textContent = 'Cargando...';
+      signInWithEmailAndPassword(auth, email, password)
+        .then(() => { window.location.reload(); })
+        .catch(e => { showError(friendlyError(e.code)); btn.disabled = false; btn.textContent = 'Entrar'; });
+    } else {
+      // Registration — validate extra fields
+      const nombre = document.getElementById('regNombre').value.trim();
+      const apellido = document.getElementById('regApellido').value.trim();
+      const domicilio = document.getElementById('regDomicilio').value.trim();
+      const rfc = document.getElementById('regRFC').value.trim();
+      if (!nombre || !apellido) { showError('Completa tu nombre y apellido'); return; }
+      if (password.length < 6) { showError('La contraseña debe tener al menos 6 caracteres'); return; }
+
+      btn.disabled = true; btn.textContent = 'Creando cuenta...';
+      createUserWithEmailAndPassword(auth, email, password)
+        .then((userCredential) => {
+          // Create user profile in DB
+          const uid = userCredential.user.uid;
+          return set(ref(db, 'users/' + uid), {
+            name: nombre + ' ' + apellido,
+            firstName: nombre,
+            lastName: apellido,
+            email: email,
+            rfc: rfc,
+            domicilio: domicilio,
+            plan: 'miembro',
+            isAdmin: false,
+            createdAt: Date.now()
+          });
+        })
+        .then(() => { window.location.reload(); })
+        .catch(e => { showError(friendlyError(e.code)); btn.disabled = false; btn.textContent = 'Crear cuenta'; });
+    }
   };
 
   window.logout = () => signOut(auth).then(() => window.location.reload());
@@ -800,14 +857,25 @@
   // ── Load user data ───────────────────────────────────────────────────────
   window.loadUserData = (user) => {
     get(ref(db, 'users/' + user.uid)).then(snap => {
-      let name = user.email.split('@')[0];
+      let name = (user.email || '').split('@')[0];
       let isAdmin = false;
+      let rfc = '', domicilio = '', telefono = '', plan = 'miembro';
       if (snap.exists()) {
-        name = snap.val().name || name;
-        isAdmin = snap.val().isAdmin || false;
+        const data = snap.val();
+        name = data.name || data.firstName + ' ' + data.lastName || name;
+        isAdmin = data.isAdmin || false;
+        rfc = data.rfc || '';
+        domicilio = data.domicilio || '';
+        telefono = data.telefono || '';
+        plan = data.plan || 'miembro';
+        document.getElementById('statFecha').textContent = data.createdAt ? new Date(data.createdAt).toLocaleDateString('es-MX', {year:'numeric',month:'short'}) : '—';
       }
       document.getElementById('dashGreeting').textContent = 'Hola, ' + name;
       if (isAdmin) document.getElementById('adminBtn').style.display = 'block';
+      loadNotices();
+      loadUserStats(user.uid);
+    }).catch(() => {
+      document.getElementById('dashGreeting').textContent = 'Hola, ' + (user.email || '').split('@')[0];
       loadNotices();
       loadUserStats(user.uid);
     });
