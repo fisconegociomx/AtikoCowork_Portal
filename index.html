@@ -901,7 +901,7 @@
   };
 
   window.updateMemberStats = (uid, data) => {
-    const isMember = data.contractStatus === 'approved';
+    const isMember = data.contractStatus === 'approved' || !!data.contractFolio;
     const badge = document.getElementById('memberStatusBadge');
     if (isMember) {
       badge.style.display = 'block';
