@@ -668,13 +668,20 @@
       </div>
     </div>
 
-    <div class="section-title" id="membershipBanner" style="display:none"> style="display:none">
+    <div class="section-title" id="membershipBanner" style="display:none">
       <div class="membership-cta">
         <div>
           <div class="membership-cta-title">¿Ya eres miembro de AtikoCowork?</div>
           <div class="membership-cta-sub">Si ya tienes contrato, registra tu membresía para acceder a tus espacios</div>
         </div>
         <button class="card-btn" onclick="openMembershipForm()">Registrar mi membresía →</button>
+      </div>
+    </div>
+
+    <div id="myReservationsSection" style="display:none">
+      <div class="section-title">Mis Reservaciones</div>
+      <div class="notices-list" id="myReservationsList">
+        <div class="notice-empty">Cargando tus reservas...</div>
       </div>
     </div>
 
@@ -955,6 +962,85 @@
     }
   };
 
+  window.loadMyReservations = (uid) => {
+    const el = document.getElementById('myReservationsList');
+    const section = document.getElementById('myReservationsSection');
+    if (!el) return;
+    const now = Date.now();
+    get(ref(db, 'reservations')).then(snap => {
+      let html = '';
+      if (!snap.exists()) {
+        el.innerHTML = '<div class="notice-empty">Sin reservaciones activas</div>';
+        if (section) section.style.display = 'block';
+        return;
+      }
+      let found = false;
+      const arr = Object.entries(snap.val()).filter(([k, r]) => r.userId === uid && r.status === 'active').sort((a,b) => a[1].startTime - b[1].startTime);
+      if (arr.length === 0) {
+        el.innerHTML = '<div class="notice-empty">Sin reservaciones activas</div>';
+        if (section) section.style.display = 'block';
+        return;
+      }
+      arr.forEach(([k, r]) => {
+        found = true;
+        const d = new Date(r.startTime);
+        const dateStr = d.toLocaleDateString('es-MX', {year:'numeric',month:'long',day:'numeric'});
+        const timeStr = d.toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'});
+        const spaceMap = { 'sala-juntas': '📅 Sala de Juntas', 'sala-cine': '🔍 Vision Room' };
+        const canReschedule = (r.startTime - now) >= 48 * 3600000;
+        const badge = canReschedule ? '<span class="badge" style="background:rgba(79,142,247,0.15);color:var(--accent2)">Puede reagendar</span>' : '<span class="badge overdue">En menos de 48h</span>';
+        html += `<div class="notice-item" style="border-left-color:var(--accent2)">
+          <div class="notice-date">${dateStr} a las ${timeStr} — ${spaceMap[r.space] || r.space}</div>
+          <div class="notice-text" style="margin-bottom:6px">${r.notes || 'Sin notas'}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">${badge}<button class="action-btn" onclick="openRescheduleModal('${k}')">Reagendar</button></div>
+        </div>`;
+      });
+      el.innerHTML = html;
+      if (section) section.style.display = 'block';
+    });
+  };
+
+  window.openRescheduleModal = (resKey) => {
+    get(ref(db, 'reservations/' + resKey)).then(snap => {
+      if (!snap.exists()) { showToast('Reservacion no encontrada', 'error'); return; }
+      const r = snap.val();
+      const today = new Date().toISOString().split('T')[0];
+      const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Vision Room' };
+      openModal('Reagendar Reservacion', `
+        <div class="form-group">
+          <label class="form-label">Fecha</label>
+          <input type="date" class="form-input" id="reschDate" value="${today}" min="${today}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hora</label>
+          <input type="time" class="form-input" id="reschTime" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duracion (horas)</label>
+          <input type="number" class="form-input" id="reschHours" min="1" value="1" />
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="modal-btn primary" onclick="submitReschedule('${resKey}')">Guardar cambios</button>
+        </div>
+      `);
+    });
+  };
+
+  window.submitReschedule = (resKey) => {
+    const date = document.getElementById('reschDate').value;
+    const time = document.getElementById('reschTime').value;
+    const hours = parseInt(document.getElementById('reschHours').value) || 1;
+    if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
+    const start = new Date(date + 'T' + time).getTime();
+    const end = start + hours * 3600000;
+    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
+      closeModal();
+      showToast('Reservacion actualizada', 'success');
+      loadMyReservations(auth.currentUser.uid);
+    });
+  };
+
   window.loadMemberHours = (uid, membershipClase) => {
     const allowance = window.hoursAllowance[membershipClase] || { sala: 0, vision: 0 };
     const now = new Date();
@@ -1001,6 +1087,7 @@
       if (isAdmin) document.getElementById('adminBtn').style.display = 'block';
       loadNotices();
       loadUserStats(user.uid);
+      loadMyReservations(user.uid);
     }).catch(() => {
       document.getElementById('dashGreeting').textContent = 'Hola, ' + (user.email || '').split('@')[0];
       const banner = document.getElementById('membershipBanner');
@@ -1008,6 +1095,7 @@
       updateMemberStats(user.uid, { contractStatus: 'none' });
       loadNotices();
       loadUserStats(user.uid);
+      loadMyReservations(user.uid);
     });
   };
 
