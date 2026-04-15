@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AtikoCowork — Portal de Miembros</title>
+  <style>
+    :root {
+      --bg: #0a0e1a;
+      --card: #131929;
+      --border: #1e2640;
+      --accent: #f5c842;
+      --accent2: #4f8ef7;
+      --green: #22c55e;
+      --red: #ef4444;
+      --muted: #6b7280;
+      --text: #e5e7eb;
+      --text2: #9ca3af;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .logo-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .nav-links {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .nav-btn {
+      background: rgba(245,200,66,0.08);
+      color: var(--text2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .nav-btn:hover {
+      background: rgba(245,200,66,0.15);
+      color: var(--accent);
+    }
+    .nav-btn.admin-only { display: none; }
+    .nav-btn.logout-btn { display: none; color: var(--red); border-color: rgba(239,68,68,0.3); }
+    main { flex: 1; display: flex; flex-direction: column; }
+
+    /* Auth screen */
+    .auth-screen {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .auth-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+    }
+    .auth-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .auth-subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 28px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus {
+      border-color: var(--accent);
+    }
+    .form-input::placeholder {
+      color: var(--muted);
+    }
+    .auth-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      margin-top: 8px;
+      transition: all 0.2s;
+    }
+    .auth-btn:hover { background: #e0b030; }
+    .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .auth-btn.secondary {
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border);
+      margin-top: 8px;
+    }
+    .auth-btn.secondary:hover {
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+    }
+    .auth-error {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px;
+      padding: 10px;
+      color: var(--red);
+      font-size: 13px;
+      text-align: center;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .auth-footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .auth-footer a {
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .auth-footer a:hover { text-decoration: underline; }
+
+    /* Dashboard */
+    .dashboard { display: none; flex: 1; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
+    .dash-header { margin-bottom: 24px; }
+    .dash-greeting {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .dash-sub { font-size: 13px; color: var(--muted); }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-size: 26px;
+      font-weight: 700;
+    }
+    .stat-value.green { color: var(--green); }
+    .stat-value.red { color: var(--red); }
+    .stat-value.accent { color: var(--accent); }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-desc { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 14px; }
+    .card-btn {
+      background: rgba(245,200,66,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(245,200,66,0.2);
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    .card-btn:hover { background: rgba(245,200,66,0.2); }
+    .card-btn.blue {
+      background: rgba(79,142,247,0.1);
+      color: var(--accent2);
+      border-color: rgba(79,142,247,0.2);
+    }
+    .card-btn.blue:hover { background: rgba(79,142,247,0.2); }
+    .card-btn.green {
+      background: rgba(34,197,94,0.1);
+      color: var(--green);
+      border-color: rgba(34,197,94,0.2);
+    }
+    .card-btn.green:hover { background: rgba(34,197,94,0.2); }
+
+    /* Notice board */
+    .notices-list { display: flex; flex-direction: column; gap: 10px; }
+    .notice-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      border-left: 3px solid var(--accent);
+    }
+    .notice-date { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .notice-text { font-size: 14px; line-height: 1.4; }
+    .notice-empty { text-align: center; padding: 30px; color: var(--muted); font-size: 14px; }
+
+    /* Account table */
+    .account-table { width: 100%; border-collapse: collapse; }
+    .account-table th {
+      text-align: left;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .account-table td {
+      padding: 10px 12px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+    .account-table tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge.paid { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge.pending { background: rgba(245,200,66,0.15); color: var(--accent); }
+    .badge.overdue { background: rgba(239,68,68,0.15); color: var(--red); }
+
+    /* Calendar */
+    .calendar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .cal-nav {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .cal-nav:hover { background: rgba(255,255,255,0.05); }
+    .cal-month { font-size: 15px; font-weight: 600; }
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+    .cal-day-name {
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      padding: 6px 0;
+      text-transform: uppercase;
+    }
+    .cal-day {
+      text-align: center;
+      padding: 8px 4px;
+      font-size: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .cal-day:hover { background: rgba(255,255,255,0.05); }
+    .cal-day.empty { color: var(--muted); cursor: default; }
+    .cal-day.booked { background: rgba(245,200,66,0.2); color: var(--accent); font-weight: 600; }
+    .cal-day.today { border: 1px solid var(--accent2); }
+
+    /* Admin panel */
+    .admin-panel { display: none; }
+    .admin-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+    }
+    .admin-tab {
+      flex: 1;
+      padding: 8px 12px;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    .admin-tab.active {
+      background: var(--accent);
+      color: #000;
+      font-weight: 600;
+    }
+    .admin-section { display: none; }
+    .admin-section.active { display: block; }
+    .admin-table-wrap {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .admin-table th {
+      text-align: left;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 12px 14px;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--border);
+    }
+    .admin-table td {
+      padding: 10px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+    .admin-table tr:last-child td { border-bottom: none; }
+    .admin-table tr:hover { background: rgba(255,255,255,0.02); }
+    .action-btn {
+      background: rgba(245,200,66,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(245,200,66,0.2);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .action-btn:hover { background: rgba(245,200,66,0.2); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      width: 100%;
+      max-width: 420px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+    .modal-close {
+      float: right;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 20px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .modal-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    .modal-btn.primary {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      font-weight: 600;
+    }
+    .modal-btn.primary:hover { background: #e0b030; }
+    .modal-btn.secondary {
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border);
+    }
+    .modal-btn.secondary:hover { background: rgba(255,255,255,0.05); }
+
+    /* Loader */
+    .loader {
+      display: none;
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .loader.show { display: block; }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 13px;
+      z-index: 200;
+      display: none;
+      max-width: 320px;
+    }
+    .toast.show { display: block; }
+    .toast.success { border-color: rgba(34,197,94,0.4); color: var(--green); }
+    .toast.error { border-color: rgba(239,68,68,0.4); color: var(--red); }
+
+    @media (max-width: 600px) {
+      .cards-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<header id="mainHeader">
+  <div class="logo" onclick="showSection('dashboard')">
+    <div class="logo-dot"></div>
+    <span>AtikoCowork</span>
+  </div>
+  <nav class="nav-links" id="navLinks">
+    <button class="nav-btn admin-only" id="adminBtn" onclick="showSection('admin')">Panel Admin</button>
+    <button class="nav-btn logout-btn" id="logoutBtn" onclick="logout()">Salir</button>
+  </nav>
+</header>
+
+<main>
+  <!-- Auth -->
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-card">
+      <div class="auth-title">AtikoCowork</div>
+      <div class="auth-subtitle">Portal de miembros</div>
+      <div class="auth-error" id="authError"></div>
+      <div class="form-group">
+        <label class="form-label">Correo electrónico</label>
+        <input type="email" class="form-input" id="authEmail" placeholder="tu@correo.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contraseña</label>
+        <input type="password" class="form-input" id="authPassword" placeholder="••••••••" />
+      </div>
+      <button class="auth-btn" id="authBtn" onclick="doLogin()">Entrar</button>
+      <button class="auth-btn secondary" id="authToggle" onclick="toggleAuth()">Crear cuenta</button>
+      <div class="auth-footer">
+        <a onclick="toggleAuth()" id="authToggleLink">¿No tienes cuenta? Regístrate</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="dashboard" id="dashboardSection">
+    <div class="dash-header">
+      <div class="dash-greeting" id="dashGreeting">Hola</div>
+      <div class="dash-sub">Aquí está tu resumen</div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Espacios reservados</div>
+        <div class="stat-value accent" id="statReservas">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Próximo evento</div>
+        <div class="stat-value" id="statProximo">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Saldo pendiente</div>
+        <div class="stat-value" id="statSaldo">$0.00</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Miembro desde</div>
+        <div class="stat-value" id="statFecha">—</div>
+      </div>
+    </div>
+
+    <div class="section-title">Reservaciones</div>
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-title">📅 Sala de Juntas</div>
+        <div class="card-desc">Reserva horas disponibles para reuniones, conferencias y sesiones de trabajo.</div>
+        <button class="card-btn blue" onclick="openReservationModal('sala-juntas')">Ver calendario</button>
+      </div>
+      <div class="card">
+        <div class="card-title">🎬 Sala Cine / Didáctica</div>
+        <div class="card-desc">Espacio para talleres, exposiciones, presentaciones y eventos especiales.</div>
+        <button class="card-btn" onclick="openReservationModal('sala-cine')">Reservar espacio</button>
+      </div>
+      <div class="card">
+        <div class="card-title">💳 Estado de Cuenta</div>
+        <div class="card-desc">Consulta tus pagos realizados, mensualidades pendientes y facturación.</div>
+        <button class="card-btn green" onclick="showSection('estado-cuenta')">Ver movimientos</button>
+      </div>
+    </div>
+
+    <div class="section-title">Avisos del administrador</div>
+    <div class="notices-list" id="noticesList">
+      <div class="loader show"><div class="spinner"></div>Cargando avisos...</div>
+    </div>
+  </div>
+
+  <!-- Estado de cuenta -->
+  <div class="dashboard" id="estadoCuentaSection">
+    <div class="dash-header">
+      <div class="dash-greeting">Estado de Cuenta</div>
+      <div class="dash-sub">Resumen de tus pagos y mensualidades</div>
+    </div>
+    <div class="loader" id="cuentaLoader"><div class="spinner"></div></div>
+    <div class="account-table" id="cuentaTable" style="display:none">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Concepto</th>
+            <th>Monto</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="cuentaBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Admin panel -->
+  <div class="dashboard admin-panel" id="adminSection">
+    <div class="dash-header">
+      <div class="dash-greeting">Panel de Administración</div>
+      <div class="dash-sub">Gestiona miembros, espacios y avisos</div>
+    </div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchAdminTab('miembros')">Miembros</button>
+      <button class="admin-tab" onclick="switchAdminTab('espacios')">Espacios</button>
+      <button class="admin-tab" onclick="switchAdminTab('reservas')">Reservas</button>
+      <button class="admin-tab" onclick="switchAdminTab('avisos')">Avisos</button>
+    </div>
+
+    <div class="admin-section active" id="tab-miembros">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="card-btn" onclick="openAddUserModal()">+ Agregar miembro</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Nombre</th><th>Email</th><th>Plan</th><th>Acciones</th></tr></thead>
+          <tbody id="adminMembersBody"><tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="admin-section" id="tab-espacios">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="card-btn" onclick="openAddSpaceModal()">+ Agregar espacio</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Nombre</th><th>Tipo</th><th>Precio/hora</th><th>Acciones</th></tr></thead>
+          <tbody id="adminSpacesBody"><tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="admin-section" id="tab-reservas">
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Espacio</th><th>Cliente</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody id="adminReservasBody"><tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="admin-section" id="tab-avisos">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="card-btn" onclick="openAddNoticeModal()">+ Publicar aviso</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Fecha</th><th>Mensaje</th><th>Acciones</th></tr></thead>
+          <tbody id="adminNoticesBody"><tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title" id="modalTitle">Modal</div>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getDatabase, ref, set, get, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCQQF8qCconFkLkkWpPu2r7h4ARhCTSuEY",
+    authDomain: "atikocoworkportal.firebaseapp.com",
+    databaseURL: "https://atikocoworkportal-default-rtdb.firebaseio.com",
+    projectId: "atikocoworkportal",
+    storageBucket: "atikocoworkportal.firebasestorage.app",
+    messagingSenderId: "970534525194",
+    appId: "1:970534525194:web:8db19d6664f470e5f002f3",
+    measurementId: "G-Q02Z6MFWEZ"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getDatabase(app);
+
+  // ── Auth ─────────────────────────────────────────────────────────────────
+  let isLogin = true;
+
+  window.toggleAuth = () => {
+    isLogin = !isLogin;
+    document.getElementById('authBtn').textContent = isLogin ? 'Entrar' : 'Crear cuenta';
+    document.getElementById('authToggle').textContent = isLogin ? 'Crear cuenta' : 'Ya tengo cuenta';
+    document.getElementById('authToggleLink').textContent = isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Entra';
+    document.getElementById('authError').style.display = 'none';
+  };
+
+  window.doLogin = () => {
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const btn = document.getElementById('authBtn');
+    if (!email || !password) { showError('Completa todos los campos'); return; }
+    btn.disabled = true; btn.textContent = 'Cargando...';
+    const op = isLogin ? signInWithEmailAndPassword(auth, email, password) : createUserWithEmailAndPassword(auth, email, password);
+    op.then(() => { window.location.reload(); })
+      .catch(e => { showError(friendlyError(e.code)); btn.disabled = false; btn.textContent = isLogin ? 'Entrar' : 'Crear cuenta'; });
+  };
+
+  window.logout = () => signOut(auth).then(() => window.location.reload());
+
+  window.friendlyError = (code) => {
+    const map = {
+      'auth/user-not-found': 'No hay cuenta con ese correo',
+      'auth/wrong-password': 'Contraseña incorrecta',
+      'auth/email-already-in-use': 'Ese correo ya tiene cuenta',
+      'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres',
+      'auth/invalid-email': 'Correo inválido',
+      'auth/too-many-requests': 'Demasiados intentos. Espera un momento',
+    };
+    return map[code] || 'Error al ' + (isLogin ? 'entrar' : 'crear cuenta');
+  };
+
+  // ── Auth state ───────────────────────────────────────────────────────────
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('dashboardSection').style.display = 'none';
+      document.getElementById('estadoCuentaSection').style.display = 'none';
+      document.getElementById('adminSection').style.display = 'none';
+      document.getElementById('dashboardSection').style.display = 'block';
+      document.getElementById('logoutBtn').style.display = 'block';
+      loadUserData(user);
+    } else {
+      document.getElementById('authScreen').style.display = 'flex';
+      document.getElementById('dashboardSection').style.display = 'none';
+      document.getElementById('estadoCuentaSection').style.display = 'none';
+      document.getElementById('adminSection').style.display = 'none';
+    }
+  });
+
+  // ── Load user data ───────────────────────────────────────────────────────
+  window.loadUserData = (user) => {
+    get(ref(db, 'users/' + user.uid)).then(snap => {
+      let name = user.email.split('@')[0];
+      let isAdmin = false;
+      if (snap.exists()) {
+        name = snap.val().name || name;
+        isAdmin = snap.val().isAdmin || false;
+      }
+      document.getElementById('dashGreeting').textContent = 'Hola, ' + name;
+      if (isAdmin) document.getElementById('adminBtn').style.display = 'block';
+      loadNotices();
+      loadUserStats(user.uid);
+    });
+  };
+
+  window.loadUserStats = (uid) => {
+    get(ref(db, 'reservations')).then(snap => {
+      let count = 0;
+      let proximo = null;
+      if (snap.exists()) {
+        const now = Date.now();
+        Object.entries(snap.val()).forEach(([k, r]) => {
+          if (r.userId === uid && r.status === 'active') {
+            count++;
+            if (r.startTime > now && (!proximo || r.startTime < proximo.startTime)) proximo = r;
+          }
+        });
+      }
+      document.getElementById('statReservas').textContent = count;
+      if (proximo) {
+        const d = new Date(proximo.startTime);
+        document.getElementById('statProximo').textContent = d.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' });
+      }
+    });
+    get(ref(db, 'payments')).then(snap => {
+      let saldo = 0;
+      if (snap.exists()) {
+        Object.entries(snap.val()).forEach(([k, p]) => {
+          if (p.userId === uid && p.status === 'pending') saldo += parseFloat(p.amount || 0);
+        });
+      }
+      const el = document.getElementById('statSaldo');
+      el.textContent = '$' + saldo.toFixed(2);
+      el.className = 'stat-value' + (saldo > 0 ? ' red' : ' green');
+    });
+  };
+
+  // ── Notices ──────────────────────────────────────────────────────────────
+  window.loadNotices = () => {
+    onValue(ref(db, 'notices'), snap => {
+      const el = document.getElementById('noticesList');
+      if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin avisos por el momento</div>'; return; }
+      let html = '';
+      const arr = Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt);
+      arr.forEach(([k, n]) => {
+        const d = new Date(n.createdAt);
+        html += `<div class="notice-item"><div class="notice-date">${d.toLocaleDateString('es-MX', {year:'numeric',month:'short',day:'numeric'})}</div><div class="notice-text">${n.message || n.text || ''}</div></div>`;
+      });
+      el.innerHTML = html;
+    });
+  };
+
+  // ── Navigation ──────────────────────────────────────────────────────────
+  window.showSection = (id) => {
+    document.querySelectorAll('.dashboard').forEach(d => d.style.display = 'none');
+    document.getElementById(id + 'Section').style.display = 'block';
+    if (id === 'admin') loadAdminData();
+    if (id === 'estado-cuenta') loadCuenta();
+  };
+
+  // ── Admin data ────────────────────────────────────────────────────────────
+  window.loadAdminData = () => {
+    get(ref(db, 'users')).then(snap => {
+      let html = '';
+      if (snap.exists()) {
+        Object.entries(snap.val()).forEach(([k, u]) => {
+          html += `<tr><td>${u.name || '—'}</td><td>${u.email || k}</td><td>${u.plan || '—'}</td><td><button class="action-btn" onclick="editUser('${k}')">Editar</button></td></tr>`;
+        });
+      }
+      document.getElementById('adminMembersBody').innerHTML = html || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Sin miembros aún</td></tr>';
+    });
+    get(ref(db, 'spaces')).then(snap => {
+      let html = '';
+      if (snap.exists()) {
+        Object.entries(snap.val()).forEach(([k, s]) => {
+          html += `<tr><td>${s.name || '—'}</td><td>${s.type || '—'}</td><td>$${parseFloat(s.pricePerHour||0).toFixed(2)}/hr</td><td><button class="action-btn">Editar</button></td></tr>`;
+        });
+      }
+      document.getElementById('adminSpacesBody').innerHTML = html || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Sin espacios aún</td></tr>';
+    });
+    get(ref(db, 'reservations')).then(snap => {
+      let html = '';
+      if (snap.exists()) {
+        Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, r]) => {
+          const d = r.startTime ? new Date(r.startTime).toLocaleDateString('es-MX') : '—';
+          const t = r.startTime ? new Date(r.startTime).toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : '—';
+          html += `<tr><td>${r.space || '—'}</td><td>${r.userName || '—'}</td><td>${d}</td><td>${t}</td><td><span class="badge ${r.status==='active'?'paid':'pending'}">${r.status || 'active'}</span></td><td><button class="action-btn">Ver</button></td></tr>`;
+        });
+      }
+      document.getElementById('adminReservasBody').innerHTML = html || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Sin reservaciones aún</td></tr>';
+    });
+    onValue(ref(db, 'notices'), snap => {
+      let html = '';
+      if (snap.exists()) {
+        Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, n]) => {
+          const d = new Date(n.createdAt).toLocaleDateString('es-MX', {year:'numeric',month:'short',day:'numeric'});
+          html += `<tr><td>${d}</td><td>${n.message || n.text || '—'}</td><td><button class="action-btn" onclick="deleteNotice('${k}')">Eliminar</button></td></tr>`;
+        });
+      }
+      document.getElementById('adminNoticesBody').innerHTML = html || '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Sin avisos publicados</td></tr>';
+    });
+  };
+
+  window.switchAdminTab = (tab) => {
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+    document.querySelector(`.admin-tab[onclick="switchAdminTab('${tab}')"]`).classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+  };
+
+  // ── Modal ────────────────────────────────────────────────────────────────
+  window.openModal = (title, content) => {
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalContent').innerHTML = content;
+    document.getElementById('modalOverlay').classList.add('show');
+  };
+  window.closeModal = () => document.getElementById('modalOverlay').classList.remove('show');
+
+  // ── Reservation modal ────────────────────────────────────────────────────
+  window.openReservationModal = (space) => {
+    const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Sala Cine / Didáctica' };
+    const today = new Date().toISOString().split('T')[0];
+    openModal(types[space] || space, `
+      <div class="form-group">
+        <label class="form-label">Fecha de reserva</label>
+        <input type="date" class="form-input" id="resDate" min="${today}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hora de inicio</label>
+        <input type="time" class="form-input" id="resTime" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Duración (horas)</label>
+        <input type="number" class="form-input" id="resHours" min="1" value="1" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas (opcional)</label>
+        <input type="text" class="form-input" id="resNotes" placeholder="Ej: Reunión con cliente" />
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+        <button class="modal-btn primary" onclick="submitReservation('${space}')">Reservar</button>
+      </div>
+    `);
+  };
+
+  window.submitReservation = (space) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const date = document.getElementById('resDate').value;
+    const time = document.getElementById('resTime').value;
+    const hours = parseInt(document.getElementById('resHours').value) || 1;
+    const notes = document.getElementById('resNotes').value;
+    if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
+    const start = new Date(`${date}T${time}`).getTime();
+    const end = start + hours * 3600000;
+    get(ref(db, 'users/' + user.uid)).then(snap => {
+      const name = snap.exists() ? (snap.val().name || user.email.split('@')[0]) : user.email.split('@')[0];
+      const res = { space, userId: user.uid, userName: name, startTime: start, endTime: end, notes, status: 'active', createdAt: Date.now() };
+      push(ref(db, 'reservations'), res).then(() => {
+        closeModal();
+        showToast('Reservación creada con éxito ✅', 'success');
+      });
+    });
+  };
+
+  // ── Admin modals ─────────────────────────────────────────────────────────
+  window.openAddUserModal = () => {
+    openModal('Agregar miembro', `
+      <div class="form-group">
+        <label class="form-label">Nombre completo</label>
+        <input type="text" class="form-input" id="newUserName" placeholder="Nombre" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Correo electrónico</label>
+        <input type="email" class="form-input" id="newUserEmail" placeholder="correo@ejemplo.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Plan / Membresía</label>
+        <select class="form-input" id="newUserPlan">
+          <option value="oficina">Oficina privada</option>
+          <option value="cowork">Cowork / Escritorio</option>
+          <option value="sala-juntas">Sala de juntas (por hora)</option>
+          <option value="sala-cine">Sala cine (por evento)</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+        <button class="modal-btn primary" onclick="addUser()">Agregar</button>
+      </div>
+    `);
+  };
+  window.addUser = () => {
+    const name = document.getElementById('newUserName').value.trim();
+    const email = document.getElementById('newUserEmail').value.trim();
+    const plan = document.getElementById('newUserPlan').value;
+    if (!name || !email) { showToast('Completa los campos', 'error'); return; }
+    const uid = email.replace(/[^a-zA-Z0-9]/g, '_');
+    set(ref(db, 'users/' + uid), { name, email, plan, isAdmin: false, createdAt: Date.now() })
+      .then(() => { closeModal(); loadAdminData(); showToast('Miembro agregado ✅', 'success'); });
+  };
+
+  window.openAddSpaceModal = () => {
+    openModal('Agregar espacio', `
+      <div class="form-group">
+        <label class="form-label">Nombre del espacio</label>
+        <input type="text" class="form-input" id="newSpaceName" placeholder="Ej: Sala de Juntas" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <select class="form-input" id="newSpaceType">
+          <option value="sala-juntas">Sala de Juntas</option>
+          <option value="sala-cine">Sala Cine / Didáctica</option>
+          <option value="oficina">Oficina Privada</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Precio por hora (MXN)</label>
+        <input type="number" class="form-input" id="newSpacePrice" placeholder="250" />
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+        <button class="modal-btn primary" onclick="addSpace()">Agregar</button>
+      </div>
+    `);
+  };
+  window.addSpace = () => {
+    const name = document.getElementById('newSpaceName').value.trim();
+    const type = document.getElementById('newSpaceType').value;
+    const price = parseFloat(document.getElementById('newSpacePrice').value) || 0;
+    if (!name) { showToast('Ingresa el nombre del espacio', 'error'); return; }
+    push(ref(db, 'spaces'), { name, type, pricePerHour: price, createdAt: Date.now() })
+      .then(() => { closeModal(); loadAdminData(); showToast('Espacio agregado ✅', 'success'); });
+  };
+
+  window.openAddNoticeModal = () => {
+    openModal('Publicar aviso', `
+      <div class="form-group">
+        <label class="form-label">Mensaje</label>
+        <textarea class="form-input" id="newNoticeMsg" rows="4" placeholder="Escribe el aviso aquí..." style="resize:vertical"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+        <button class="modal-btn primary" onclick="addNotice()">Publicar</button>
+      </div>
+    `);
+  };
+  window.addNotice = () => {
+    const msg = document.getElementById('newNoticeMsg').value.trim();
+    if (!msg) { showToast('Escribe un mensaje', 'error'); return; }
+    push(ref(db, 'notices'), { message: msg, createdAt: Date.now() })
+      .then(() => { closeModal(); loadAdminData(); showToast('Aviso publicado ✅', 'success'); });
+  };
+
+  window.deleteNotice = (k) => { if (confirm('Eliminar este aviso?')) remove(ref(db, 'notices/' + k)).then(() => loadAdminData()); };
+
+  // ── Estado de cuenta ─────────────────────────────────────────────────────
+  window.loadCuenta = () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    document.getElementById('cuentaLoader').style.display = 'block';
+    document.getElementById('cuentaTable').style.display = 'none';
+    get(ref(db, 'payments')).then(snap => {
+      let html = '';
+      let found = false;
+      if (snap.exists()) {
+        Object.entries(snap.val()).sort((a,b) => b[1].date - a[1].date).forEach(([k, p]) => {
+          if (p.userId === user.uid) {
+            found = true;
+            const d = p.date ? new Date(p.date).toLocaleDateString('es-MX', {year:'numeric',month:'short',day:'numeric'}) : '—';
+            html += `<tr><td>${d}</td><td>${p.concept || '—'}</td><td>$${parseFloat(p.amount||0).toFixed(2)}</td><td><span class="badge ${p.status==='paid'?'paid':p.status==='pending'?'pending':'overdue'}">${p.status==='paid'?'Pagado':p.status==='pending'?'Pendiente':'Vencido'}</span></td></tr>`;
+          }
+        });
+      }
+      document.getElementById('cuentaLoader').style.display = 'none';
+      document.getElementById('cuentaTable').style.display = found ? 'table' : 'none';
+      document.getElementById('cuentaBody').innerHTML = html || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Sin movimientos registrados</td></tr>';
+    });
+  };
+
+  // ── Toast ────────────────────────────────────────────────────────────────
+  window.showToast = (msg, type) => {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = 'toast ' + type + ' show';
+    setTimeout(() => t.classList.remove('show'), 3000);
+  };
+
+  // ── Enter key on auth ─────────────────────────────────────────────────────
+  document.getElementById('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>
