@@ -1424,7 +1424,7 @@
           const statusBadge = isMember
             ? '<span class="badge paid">● Miembro</span>'
             : '<span class="badge pending">○ No miembro</span>';
-          html += `<tr><td>${u.name || '—'}</td><td>${u.email || k}</td><td>${u.plan || '—'}</td><td>${statusBadge}</td><td><button class="action-btn" onclick="editUser('${k}')">Editar</button></td></tr>`;
+          html += `<tr><td>${u.name || '—'}</td><td>${u.email || k}</td><td>${u.plan || '—'}</td><td>${statusBadge}</td><td><button class="action-btn" onclick="(function(){})()">Editar</button></td></tr>`;
         });
       }
       document.getElementById('adminMembersBody').innerHTML = html || '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">Sin miembros aún</td></tr>';
