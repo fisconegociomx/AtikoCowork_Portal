@@ -1198,7 +1198,216 @@
   };
 
   // ── Navigation ──────────────────────────────────────────────────────────
+  window.loadAdminRequests = () => {
+    const el = document.getElementById('adminRequestsList');
+    const banner = document.getElementById('adminRequestsBanner');
+    if (!el) return;
+    get(ref(db, 'reservationRequests')).then(snap => {
+      if (!snap.exists()) {
+        el.innerHTML = '<div class="notice-empty">No hay solicitudes pendientes</div>';
+        if (banner) banner.style.display = 'none';
+        return;
+      }
+      let pending = [];
+      Object.entries(snap.val()).filter(([k, r]) => r.status === 'pendingApproval').forEach(([k, r]) => pending.push([k, r]));
+      if (pending.length === 0) {
+        el.innerHTML = '<div class="notice-empty">No hay solicitudes pendientes</div>';
+        if (banner) banner.style.display = 'none';
+        return;
+      }
+      if (banner) banner.style.display = 'block';
+      document.getElementById('adminRequestsCount').textContent = pending.length + ' solicitud(es) nueva(s)';
+      let html = '';
+      pending.forEach(([k, r]) => {
+        const d = new Date(r.startTime);
+        const dateStr = d.toLocaleDateString('es-MX', {year:'numeric',month:'long',day:'numeric'});
+        const timeStr = d.toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'});
+        const spaceMap = { 'sala-juntas': '📅 Sala de Juntas', 'sala-cine': '🔍 Vision Room' };
+        const hours = ((r.endTime || r.startTime) - r.startTime) / 3600000;
+        html += `<div class="notice-item" style="border-left-color:var(--accent2)">
+          <div class="notice-date">${dateStr} a las ${timeStr} — ${spaceMap[r.space] || r.space}</div>
+          <div class="notice-text" style="margin-bottom:6px">${r.notes || 'Sin notas'}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-bottom:10px;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px">
+            <div><span style="color:var(--text2)">Nombre:</span> ${r.userName}</div>
+            <div><span style="color:var(--text2)">Telefono:</span> ${r.userPhone || 'N/A'}</div>
+            <div><span style="color:var(--text2)">Horas:</span> ${hours}</div>
+            <div><span style="color:var(--text2)">Solicitado:</span> ${new Date(r.createdAt).toLocaleDateString('es-MX')}</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="action-btn" onclick="adminApproveRequest('${k}', '${r.space}', '${r.userId}', ${r.startTime}, ${r.endTime}, '${r.notes || ''}', ${hours})">Aprobar</button>
+            <button class="action-btn" onclick="adminRejectRequest('${k}')" style="color:var(--red);border-color:rgba(239,68,68,0.3)">Rechazar</button>
+          </div>
+        </div>`;
+      });
+      el.innerHTML = html;
+    });
+  };
+
+  window.adminApproveRequest = (reqKey, space, userId, startTime, endTime, notes, hours) => {
+    push(ref(db, 'reservations'), {
+      space, userId, startTime, endTime, notes, status: 'active', createdAt: Date.now(), fromRequest: reqKey
+    }).then(() => {
+      update(ref(db, 'reservationRequests/' + reqKey), { status: 'approved' }).then(() => {
+        showToast('Reservacion aprobada!', 'success');
+        loadAdminRequests();
+      });
+    });
+  };
+
+  window.adminRejectRequest = (reqKey) => {
+    update(ref(db, 'reservationRequests/' + reqKey), { status: 'rejected' }).then(() => {
+      showToast('Solicitud rechazada', 'error');
+      loadAdminRequests();
+    });
+  };
+
+  window.loadAdminSpaces = () => {
+    const el = document.getElementById('adminSpacesList');
+    if (!el) return;
+    get(ref(db, 'spaces')).then(snap => {
+      if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin espacios registrados</div>'; return; }
+      let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">';
+      Object.entries(snap.val()).forEach(([k, s]) => {
+        const color = s.status === 'available' ? 'var(--green)' : 'var(--red)';
+        html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px">${s.name}</div>
+          <div style="font-size:11px;color:${color};font-weight:600">${s.status === 'available' ? '● Disponible' : '● Ocupado'}</div>
+          <select class="form-input" style="margin-top:8px;font-size:11px" onchange="adminUpdateSpaceStatus('${k}', this.value)">
+            <option value="available" ${s.status==='available'?'selected':''}>Disponible</option>
+            <option value="occupied" ${s.status==='occupied'?'selected':''}>Ocupado</option>
+          </select>
+        </div>`;
+      });
+      html += '</div>';
+      el.innerHTML = html;
+    });
+  };
+
+  window.adminUpdateSpaceStatus = (spaceKey, status) => {
+    update(ref(db, 'spaces/' + spaceKey), { status }).then(() => showToast('Estado actualizado', 'success'));
+  };
+
+  window.addMemberHours = (uid) => {
+    const sala = parseInt(document.getElementById('addHoursSala').value) || 0;
+    const vision = parseInt(document.getElementById('addHoursVision').value) || 0;
+    get(ref(db, 'users/' + uid)).then(snap => {
+      const cur = snap.val()?.memberHours || { sala: 0, vision: 0 };
+      update(ref(db, 'users/' + uid), {
+        memberHours: { sala: cur.sala + sala, vision: cur.vision + vision }
+      }).then(() => {
+        showToast('Horas agregadas al miembro', 'success');
+        loadAdminMembers();
+      });
+    });
+  };
+
+  window.loadAdminMembers = () => {
+    const el = document.getElementById('adminMembersList');
+    if (!el) return;
+    get(ref(db, 'users')).then(snap => {
+      if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin miembros</div>'; return; }
+      let html = '';
+      Object.entries(snap.val()).forEach(([k, u]) => {
+        const isMember = u.contractStatus === 'approved' || !!u.contractFolio;
+        if (!isMember) return;
+        html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+          <div style="font-weight:600;margin-bottom:4px">${u.email || k}</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Tipo: ${u.clase || u.contractTipo || 'N/A'} | Horas: ${u.memberHours?.sala || 0} SJ / ${u.memberHours?.vision || 0} VR</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="number" class="form-input" id="addSala_${k}" placeholder="Sala" min="0" style="width:70px;font-size:12px" />
+            <input type="number" class="form-input" id="addVision_${k}" placeholder="Vision" min="0" style="width:70px;font-size:12px" />
+            <button class="action-btn" onclick="(function(){const s=parseInt(document.getElementById('addSala_${k}').value)||0;const v=parseInt(document.getElementById('addVision_${k}').value)||0;if(s||v){const cur=(${JSON.stringify(u.memberHours||{sala:0,vision:0})});update(ref(db,'users/${k}'),{memberHours:{sala:cur.sala+s,vision:cur.vision+v}}).then(()=>{showToast('Horas agregadas','success');loadAdminMembers();});}}())">+ Agregar horas</button>
+          </div>
+        </div>`;
+      });
+      if (!html) html = '<div class="notice-empty">Sin miembros activos</div>';
+      el.innerHTML = html;
+    });
+  };
+
+  window.rescheduleReservation = (resKey) => {
+    get(ref(db, 'reservations/' + resKey)).then(snap => {
+      if (!snap.exists()) { showToast('Reservacion no encontrada', 'error'); return; }
+      const r = snap.val();
+      const today = new Date().toISOString().split('T')[0];
+      openModal('Reagendar Reservacion', `
+        <div class="form-group"><label class="form-label">Fecha</label><input type="date" class="form-input" id="adminReschDate" value="${today}" min="${today}" /></div>
+        <div class="form-group"><label class="form-label">Hora</label><input type="time" class="form-input" id="adminReschTime" /></div>
+        <div class="form-group"><label class="form-label">Duracion (horas)</label><input type="number" class="form-input" id="adminReschHours" min="1" value="1" /></div>
+        <div class="modal-actions">
+          <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="modal-btn primary" onclick="submitAdminReschedule('${resKey}')">Guardar</button>
+        </div>
+      `);
+    });
+  };
+
+  window.submitAdminReschedule = (resKey) => {
+    const date = document.getElementById('adminReschDate').value;
+    const time = document.getElementById('adminReschTime').value;
+    const hours = parseInt(document.getElementById('adminReschHours').value) || 1;
+    if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
+    const start = new Date(date + 'T' + time).getTime();
+    const end = start + hours * 3600000;
+    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
+      closeModal();
+      showToast('Reservacion actualizada', 'success');
+      loadAdminReservations();
+    });
+  };
+
+  window.adminCancelReservation = (resKey) => {
+    if (!confirm('Cancelar esta reservacion?')) return;
+    update(ref(db, 'reservations/' + resKey), { status: 'cancelled' }).then(() => {
+      showToast('Reservacion cancelada', 'success');
+      loadAdminReservations();
+    });
+  };
+
+  window.loadAdminReservations = () => {
+    const el = document.getElementById('adminReservationsList');
+    if (!el) return;
+    get(ref(db, 'reservations')).then(snap => {
+      if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin reservaciones</div>'; return; }
+      const spaceMap = { 'sala-juntas': '📅 SJ', 'sala-cine': '🔍 VR' };
+      let html = '';
+      Object.entries(snap.val()).filter(([, r]) => r.status === 'active').sort((a,b) => b[1].startTime - a[1].startTime).forEach(([k, r]) => {
+        const d = new Date(r.startTime);
+        const dateStr = d.toLocaleDateString('es-MX', {year:'numeric',month:'long',day:'numeric'});
+        const timeStr = d.toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'});
+        html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:600;font-size:13px">${spaceMap[r.space] || r.space} — ${dateStr} ${timeStr}</div>
+              <div style="font-size:11px;color:var(--text2)">${r.notes || 'Sin notas'}</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="action-btn" style="font-size:11px" onclick="rescheduleReservation('${k}')">Reagendar</button>
+              <button class="action-btn" style="color:var(--red);border-color:rgba(239,68,68,0.3);font-size:11px" onclick="adminCancelReservation('${k}')">Cancelar</button>
+            </div>
+          </div>
+        </div>`;
+      });
+      if (!html) html = '<div class="notice-empty">Sin reservaciones activas</div>';
+      el.innerHTML = html;
+    });
+  };
+
   window.showSection = (id) => {
+    if (id === 'admin-requests') {
+      document.querySelectorAll('.page-section').forEach(el => el.style.display = 'none');
+      const sec = document.getElementById('admin-requests');
+      if (sec) sec.style.display = 'block';
+      loadAdminRequests();
+      return;
+    }
+    if (id === 'admin-spaces') {
+      document.querySelectorAll('.page-section').forEach(el => el.style.display = 'none');
+      const sec = document.getElementById('admin-spaces');
+      if (sec) sec.style.display = 'block';
+      loadAdminSpaces();
+      return;
+    }
     document.querySelectorAll('.dashboard').forEach(d => d.style.display = 'none');
     document.getElementById(id + 'Section').style.display = 'block';
     if (id === 'admin') loadAdminData();
