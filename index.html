@@ -933,6 +933,12 @@
     signOut(auth).then(() => window.location.reload()).catch(() => window.location.reload());
   };
 
+  window.showError = (msg) => {
+    const el = document.getElementById('authError');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+    else alert(msg);
+  };
+
   window.friendlyError = (msg) => {
     const map = {
       'INVALID_EMAIL': 'Correo inválido',
@@ -967,6 +973,8 @@
         document.getElementById('authScreen').style.display = 'none';
         document.getElementById('dashboardSection').style.display = 'block';
         document.getElementById('logoutBtn').style.display = 'block';
+        // Hide admin button unless isAdmin
+        document.getElementById('adminBtn').style.display = 'none';
         loadUserData(user);
       } else {
         localStorage.removeItem('firebaseToken');
