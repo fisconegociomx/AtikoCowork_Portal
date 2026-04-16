@@ -968,16 +968,37 @@
     const section = document.getElementById('myReservationsSection');
     if (!el) return;
     const now = Date.now();
-    get(ref(db, 'reservations')).then(snap => {
+    Promise.all([get(ref(db, 'reservations')), get(ref(db, 'users/' + uid))]).then(([snap, userSnap]) => {
+      const userData = userSnap.val() || {};
+      const memberHours = userData.memberHours || { sala: 0, vision: 0 };
+      const isMember = userData.contractStatus === 'approved' || !!userData.contractFolio;
+      // Non-member hours summary
       let html = '';
+      if (!isMember && (memberHours.sala > 0 || memberHours.vision > 0)) {
+        html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+          <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--green)">${memberHours.sala}</div>
+            <div style="font-size:11px;color:var(--text2)">Horas Sala de Juntas disponibles</div>
+          </div>
+          <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--green)">${memberHours.vision}</div>
+            <div style="font-size:11px;color:var(--text2)">Horas Vision Room disponibles</div>
+          </div>
+        </div>`;
+      }
       if (!snap.exists()) {
-        el.innerHTML = '<div class="notice-empty">Sin reservaciones activas</div>';
+        el.innerHTML = html + '<div class="notice-empty">Sin reservaciones activas</div>';
         if (section) section.style.display = 'block';
         return;
       }
       let found = false;
       const arr = Object.entries(snap.val()).filter(([k, r]) => r.userId === uid && r.status === 'active').sort((a,b) => a[1].startTime - b[1].startTime);
-      if (arr.length === 0) {
+      if (arr.length === 0 && !html) {
+        el.innerHTML = '<div class="notice-empty">Sin reservaciones activas</div>';
+        if (section) section.style.display = 'block';
+        return;
+      }
+      if (!html && arr.length === 0) {
         el.innerHTML = '<div class="notice-empty">Sin reservaciones activas</div>';
         if (section) section.style.display = 'block';
         return;
@@ -989,8 +1010,7 @@
         const timeStr = d.toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'});
         const spaceMap = { 'sala-juntas': '📅 Sala de Juntas', 'sala-cine': '🔍 Vision Room' };
         const canReschedule = (r.startTime - now) >= 48 * 3600000;
-        const canCancel = canReschedule; // cancel with <48h = lose the hour
-        const hoursUsed = ((r.endTime || r.startTime) - r.startTime) / 3600000;
+        const canCancel = canReschedule;
         const badge = canReschedule
           ? '<span class="badge" style="background:rgba(79,142,247,0.15);color:var(--accent2)">Puede reagendar</span>'
           : '<span class="badge overdue">En menos de 48h — sin cambios</span>';
@@ -1000,7 +1020,7 @@
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
             ${badge}
             <button class="action-btn" style="${canReschedule ? '' : 'opacity:0.4;cursor:not-allowed'}" ${canReschedule ? `onclick="openRescheduleModal('${k}')"` : 'disabled'} title="${canReschedule ? 'Reagendar' : 'Solo con 48h de anticipacion'}">Reagendar</button>
-            <button class="action-btn" onclick="cancelReservation('${k}', ${canCancel ? 'true' : 'false'}, ${hoursUsed}, '${r.space}')" style="color:var(--red);border-color:rgba(239,68,68,0.3)">Cancelar${canCancel ? '' : ' (pierde hora)'}</button>
+            <button class="action-btn" onclick="cancelReservation('${k}', ${canCancel ? 'true' : 'false'}, '${r.space}', window._membershipClase)" style="color:var(--red);border-color:rgba(239,68,68,0.3)">Cancelar${canCancel ? '' : ' (pierde hora)'}</button>
           </div>
         </div>`;
       });
@@ -1036,14 +1056,25 @@
     });
   };
 
-  window.cancelReservation = (resKey, refundHours, space) => {
+  window.cancelReservation = (resKey, refundHours, space, membershipClase) => {
     if (!confirm('Estas seguro de cancelar esta reservacion?' + (refundHours ? '' : '\nPerderas la hora invertida'))) return;
     const user = auth.currentUser;
     if (!user) return;
     const updates = refundHours ? { status: 'cancelled', refunded: true } : { status: 'cancelled', refunded: false };
-    update(ref(db, 'reservations/' + resKey), updates).then(() => {
-      showToast(refundHours ? 'Reservacion cancelada. Hora devuelta.' : 'Reservacion cancelada. Hora perdida.', refundHours ? 'success' : 'error');
-      loadMyReservations(user.uid);
+    const pHours = refundHours ? { [space]: (1 * 3600000) } : null;
+    Promise.all([update(ref(db, 'reservations/' + resKey), updates)]).then(() => {
+      if (refundHours) {
+        const key = space === 'sala-juntas' ? 'sala' : 'vision';
+        get(ref(db, 'users/' + user.uid)).then(uSnap => {
+          const cur = parseInt(uSnap.val()?.memberHours?.[key] || 0);
+          update(ref(db, 'users/' + user.uid), { [`memberHours.${key}`]: cur + 1 });
+          showToast('Reservacion cancelada. Hora devuelta.', 'success');
+          loadMyReservations(user.uid);
+        });
+      } else {
+        showToast('Reservacion cancelada. Hora perdida.', 'error');
+        loadMyReservations(user.uid);
+      }
     });
   };
 
