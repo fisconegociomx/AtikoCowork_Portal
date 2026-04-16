@@ -1424,7 +1424,9 @@
           const statusBadge = isMember
             ? '<span class="badge paid">● Miembro</span>'
             : '<span class="badge pending">○ No miembro</span>';
-          html += `<tr><td>${u.name || '—'}</td><td>${u.email || k}</td><td>${u.plan || '—'}</td><td>${statusBadge}</td><td><button class="action-btn" onclick="(function(){})()">Editar</button></td></tr>`;
+          html += `<tr><td>${u.name || '—'}</td><td>${u.email || k}</td><td>${u.plan || '—'}</td><td>${statusBadge}</td><td>
+            <button class="action-btn" onclick="openEditMemberModal('${k}', '${u.email || ''}', '${u.name || ''}')" title="Editar horas">✎ Horas</button>
+          </td></tr>`;
         });
       }
       document.getElementById('adminMembersBody').innerHTML = html || '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">Sin miembros aún</td></tr>';
@@ -1433,7 +1435,10 @@
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, s]) => {
-          html += `<tr><td>${s.name || '—'}</td><td>${s.type || '—'}</td><td>$${parseFloat(s.pricePerHour||0).toFixed(2)}/hr</td><td><button class="action-btn">Editar</button></td></tr>`;
+          html += `<tr><td>${s.name || '—'}</td><td>${s.type || '—'}</td><td>$${parseFloat(s.pricePerHour||0).toFixed(2)}/hr</td><td>
+            <button class="action-btn" onclick="openEditSpaceModal('${k}', '${s.name}', '${s.type}', ${s.pricePerHour||0})" title="Editar">✎</button>
+            <button class="action-btn" onclick="adminDeleteSpace('${k}')" style="color:var(--red);border-color:rgba(239,68,68,0.3)" title="Eliminar">🗑</button>
+          </td></tr>`;
         });
       }
       document.getElementById('adminSpacesBody').innerHTML = html || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Sin espacios aún</td></tr>';
@@ -1444,7 +1449,10 @@
         Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, r]) => {
           const d = r.startTime ? new Date(r.startTime).toLocaleDateString('es-MX') : '—';
           const t = r.startTime ? new Date(r.startTime).toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : '—';
-          html += `<tr><td>${r.space || '—'}</td><td>${r.userName || '—'}</td><td>${d}</td><td>${t}</td><td><span class="badge ${r.status==='active'?'paid':'pending'}">${r.status || 'active'}</span></td><td><button class="action-btn">Ver</button></td></tr>`;
+          html += `<tr><td>${r.space || '—'}</td><td>${r.userName || '—'}</td><td>${d}</td><td>${t}</td><td><span class="badge ${r.status==='active'?'paid':'pending'}">${r.status || 'active'}</span></td><td>
+            <button class="action-btn" onclick="adminRescheduleReservation('${k}')" title="Reagendar">✎</button>
+            <button class="action-btn" onclick="adminCancelReservation('${k}')" style="color:var(--red);border-color:rgba(239,68,68,0.3)" title="Cancelar">✕</button>
+          </td></tr>`;
         });
       }
       document.getElementById('adminReservasBody').innerHTML = html || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Sin reservaciones aún</td></tr>';
@@ -1459,42 +1467,56 @@
       }
       document.getElementById('adminNoticesBody').innerHTML = html || '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Sin avisos publicados</td></tr>';
     });
-    onValue(ref(db, 'membershipApplications'), snap => {
+    onValue(ref(db, 'reservationRequests'), snap => {
       let html = '';
       if (snap.exists()) {
-        Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, a]) => {
-          const d = new Date(a.createdAt).toLocaleDateString('es-MX', {year:'numeric',month:'short',day:'numeric'});
-          const docsList = [];
-          if (a.docs) {
-            if (a.docs.ine) docsList.push('INE');
-            if (a.docs.constancia) docsList.push('CONSTANCIA');
-            if (a.docs.contrato) docsList.push('CONTRATO');
-            if (a.docs.reglamento) docsList.push('REGLAMENTO');
-          }
-          const docsStr = docsList.length ? docsList.join(', ') : 'Ninguno';
-          const tipoMap = { oficina: 'Oficina', membresia: 'Membresía' };
-          const statusBadge = a.status === 'approved'
-            ? '<span class="badge paid">Aprobada</span>'
-            : a.status === 'rejected'
-            ? '<span class="badge overdue">Rechazada</span>'
-            : '<span class="badge pending">Pendiente</span>';
-          html += `<tr>
-            <td>${a.nombre || '—'}</td>
-            <td style="color:var(--accent)">${a.folio || '—'}</td>
-            <td>${tipoMap[a.tipo] || a.tipo || '—'}</td>
-            <td>${a.clase || '—'}</td>
-            <td><small style="color:var(--text2)">${docsStr}</small></td>
-            <td>${statusBadge}</td>
-            <td>
-              ${a.status === 'pending' ? `
-                <button class="action-btn" style="color:var(--green)" onclick="approveApplication('${k}')">✓ Aprobar</button>
-                <button class="action-btn" style="color:var(--red)" onclick="rejectApplication('${k}')">✗ Rechazar</button>
-              ` : '<small style="color:var(--muted)">—</small>'}
-            </td>
-          </tr>`;
-        });
+        const all = Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt);
+        const pending = all.filter(([,r]) => r.status === 'pendingApproval');
+        const spaceMap = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Vision Room', 'cowork': 'Cowork', 'confort': 'Confort', 'nexus': 'Nexus', 'oficina': 'Oficina 1', 'local': 'Local' };
+        const statusBadge = (s) => s === 'pendingApproval'
+          ? '<span class="badge pending">⏳ Pendiente</span>'
+          : s === 'approved'
+          ? '<span class="badge paid">✅ Aprobada</span>'
+          : '<span class="badge overdue">❌ Rechazada</span>';
+        if (pending.length === 0) {
+          html = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">Sin solicitudes pendientes ✅</td></tr>';
+        } else {
+          pending.forEach(([k, r]) => {
+            const d = r.startTime ? new Date(r.startTime) : null;
+            const dateStr = d ? d.toLocaleDateString('es-MX', {year:'numeric',month:'long',day:'numeric'}) : '—';
+            const timeStr = d ? d.toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : '—';
+            const hours = r.startTime && r.endTime ? Math.round((r.endTime - r.startTime) / 3600000) : 1;
+            html += `<tr>
+              <td><strong>${r.userName || '—'}</strong><br><small style="color:var(--text2)">${r.userPhone || ''}</small></td>
+              <td>${spaceMap[r.space] || r.space || '—'}</td>
+              <td>${dateStr}</td>
+              <td>${timeStr}<br><small style="color:var(--text2)">${hours}h</small></td>
+              <td>${r.notes || '—'}</td>
+              <td>${statusBadge(r.status)}</td>
+              <td>
+                <button class="action-btn" style="color:var(--green)" onclick="adminApproveReservationRequest('${k}', '${r.space}', '${r.userId}', ${r.startTime}, ${r.endTime}, '${encodeURIComponent(r.notes||'')}', ${hours})">✓ Aprobar</button>
+                <button class="action-btn" style="color:var(--red);border-color:rgba(239,68,68,0.3)" onclick="adminRejectReservationRequest('${k}')">✕ Rechazar</button>
+              </td>
+            </tr>`;
+          });
+          all.filter(([,r]) => r.status !== 'pendingApproval').forEach(([k, r]) => {
+            const d = r.startTime ? new Date(r.startTime) : null;
+            const dateStr = d ? d.toLocaleDateString('es-MX', {year:'numeric',month:'short',day:'numeric'}) : '—';
+            html += `<tr style="opacity:0.5">
+              <td><strong>${r.userName || '—'}</strong></td>
+              <td>${spaceMap[r.space] || r.space || '—'}</td>
+              <td>${dateStr}</td>
+              <td>—</td>
+              <td>${r.notes || '—'}</td>
+              <td>${statusBadge(r.status)}</td>
+              <td><small style="color:var(--muted)">—</small></td>
+            </tr>`;
+          });
+        }
+      } else {
+        html = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">Sin solicitudes aún</td></tr>';
       }
-      document.getElementById('adminSolicitudesBody').innerHTML = html || '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">Sin solicitudes pendientes</td></tr>';
+      document.getElementById('adminSolicitudesBody').innerHTML = html;
     });
   };
 
@@ -2019,6 +2041,157 @@
 
   // ── Enter key on auth ─────────────────────────────────────────────────────
   document.getElementById('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+  // ── Initialize spaces on first load ─────────────────────────────────────
+  const defaultSpaces = [
+    { name: 'Sala de Juntas', type: 'sala-juntas', pricePerHour: 450, status: 'available' },
+    { name: 'Vision Room', type: 'sala-cine', pricePerHour: 1500, status: 'available' },
+    { name: 'Cowork', type: 'cowork', pricePerHour: 200, status: 'available' },
+    { name: 'Confort', type: 'confort', pricePerHour: 300, status: 'available' },
+    { name: 'Nexus', type: 'nexus', pricePerHour: 350, status: 'available' },
+    { name: 'Oficina 1', type: 'oficina', pricePerHour: 800, status: 'available' },
+    { name: 'Local 1', type: 'local', pricePerHour: 600, status: 'available' },
+    { name: 'Local 2', type: 'local', pricePerHour: 600, status: 'available' },
+  ];
+  window.initSpaces = () => {
+    get(ref(db, 'spaces')).then(snap => {
+      if (!snap.exists() || Object.keys(snap.val()).length < 8) {
+        defaultSpaces.forEach(s => {
+          push(ref(db, 'spaces'), { ...s, createdAt: Date.now() });
+        });
+      }
+    });
+  };
+  initSpaces();
+
+  // ── Admin member hours edit ───────────────────────────────────────────────
+  window.openEditMemberModal = (uid, email, name) => {
+    get(ref(db, 'users/' + uid)).then(snap => {
+      const u = snap.val() || {};
+      const cur = u.memberHours || { sala: 0, vision: 0 };
+      openModal('Editar Miembro — ' + (name || email), `
+        <div style="margin-bottom:14px"><strong>${name || email}</strong><br><small style="color:var(--muted)">${email}</small></div>
+        <div class="form-group">
+          <label class="form-label">Horas Sala de Juntas (agregar)</label>
+          <input type="number" class="form-input" id="editSala_${uid}" value="0" min="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Horas Vision Room (agregar)</label>
+          <input type="number" class="form-input" id="editVision_${uid}" value="0" min="0" />
+        </div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:16px;font-size:12px;color:var(--muted)">
+          Horas actuales: <strong style="color:var(--accent)">${cur.sala} SJ</strong> / <strong style="color:var(--accent)">${cur.vision} VR</strong>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="modal-btn primary" onclick="saveMemberHours('${uid}')">Guardar</button>
+        </div>
+      `);
+    });
+  };
+  window.saveMemberHours = (uid) => {
+    const sala = parseInt(document.getElementById('editSala_' + uid).value) || 0;
+    const vision = parseInt(document.getElementById('editVision_' + uid).value) || 0;
+    get(ref(db, 'users/' + uid)).then(snap => {
+      const cur = snap.val()?.memberHours || { sala: 0, vision: 0 };
+      update(ref(db, 'users/' + uid), {
+        memberHours: { sala: cur.sala + sala, vision: cur.vision + vision }
+      }).then(() => { closeModal(); showToast('Horas actualizadas ✅', 'success'); loadAdminData(); });
+    });
+  };
+
+  // ── Admin space edit ─────────────────────────────────────────────────────
+  window.openEditSpaceModal = (key, name, type, price) => {
+    const typeMap = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Vision Room', 'cowork': 'Cowork', 'confort': 'Confort', 'nexus': 'Nexus', 'oficina': 'Oficina Privada', 'local': 'Local' };
+    openModal('Editar Espacio', `
+      <div class="form-group">
+        <label class="form-label">Nombre</label>
+        <input type="text" class="form-input" id="editSpaceName" value="${name}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <select class="form-input" id="editSpaceType">
+          <option value="sala-juntas" ${type==='sala-juntas'?'selected':''}>Sala de Juntas</option>
+          <option value="sala-cine" ${type==='sala-cine'?'selected':''}>Vision Room</option>
+          <option value="cowork" ${type==='cowork'?'selected':''}>Cowork</option>
+          <option value="confort" ${type==='confort'?'selected':''}>Confort</option>
+          <option value="nexus" ${type==='nexus'?'selected':''}>Nexus</option>
+          <option value="oficina" ${type==='oficina'?'selected':''}>Oficina Privada</option>
+          <option value="local" ${type==='local'?'selected':''}>Local</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Precio por hora (MXN)</label>
+        <input type="number" class="form-input" id="editSpacePrice" value="${price}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estado</label>
+        <select class="form-input" id="editSpaceStatus">
+          <option value="available">Disponible</option>
+          <option value="occupied">Ocupado</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+        <button class="modal-btn primary" onclick="saveSpace('${key}')">Guardar</button>
+      </div>
+    `);
+  };
+  window.saveSpace = (key) => {
+    const name = document.getElementById('editSpaceName').value.trim();
+    const type = document.getElementById('editSpaceType').value;
+    const price = parseFloat(document.getElementById('editSpacePrice').value) || 0;
+    const status = document.getElementById('editSpaceStatus').value;
+    if (!name) { showToast('Ingresa el nombre', 'error'); return; }
+    update(ref(db, 'spaces/' + key), { name, type, pricePerHour: price, status }).then(() => {
+      closeModal(); showToast('Espacio actualizado ✅', 'success'); loadAdminData();
+    });
+  };
+  window.adminDeleteSpace = (key) => {
+    if (!confirm('Eliminar este espacio?')) return;
+    remove(ref(db, 'spaces/' + key)).then(() => { showToast('Espacio eliminado', 'success'); loadAdminData(); });
+  };
+
+  // ── Admin reservation reschedule ────────────────────────────────────────
+  window.adminRescheduleReservation = (resKey) => {
+    get(ref(db, 'reservations/' + resKey)).then(snap => {
+      if (!snap.exists()) { showToast('Reservación no encontrada', 'error'); return; }
+      const r = snap.val();
+      const d = new Date(r.startTime);
+      const dateStr = d.toISOString().split('T')[0];
+      const timeStr = d.toTimeString().slice(0,5);
+      const hours = Math.round(((r.endTime||r.startTime) - r.startTime) / 3600000);
+      openModal('Reagendar Reservación', `
+        <div class="form-group">
+          <label class="form-label">Fecha</label>
+          <input type="date" class="form-input" id="adminReschDate" value="${dateStr}" min="${new Date().toISOString().split('T')[0]}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hora</label>
+          <input type="time" class="form-input" id="adminReschTime" value="${timeStr}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duración (horas)</label>
+          <input type="number" class="form-input" id="adminReschHours" min="1" value="${hours}" />
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="modal-btn primary" onclick="adminSubmitReschedule('${resKey}')">Guardar</button>
+        </div>
+      `);
+    });
+  };
+  window.adminSubmitReschedule = (resKey) => {
+    const date = document.getElementById('adminReschDate').value;
+    const time = document.getElementById('adminReschTime').value;
+    const hours = parseInt(document.getElementById('adminReschHours').value) || 1;
+    if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
+    const start = new Date(date + 'T' + time).getTime();
+    const end = start + hours * 3600000;
+    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
+      closeModal(); showToast('Reservación actualizada ✅', 'success'); loadAdminData();
+    });
+  };
 </script>
 </body>
 </html>
