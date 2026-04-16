@@ -814,6 +814,14 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<!-- Show auth screen immediately (before Firebase loads) -->
+<script>
+  (function() {
+    var el = document.getElementById('authScreen');
+    if (el) el.style.display = 'flex';
+  })();
+</script>
+
 <!-- Firebase -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -940,7 +948,9 @@
   };
 
   // ── Auth state ───────────────────────────────────────────────────────────
-  // Check for stored token first, then validate with Firebase
+  // Show auth screen immediately while we validate
+  document.getElementById('authScreen').style.display = 'flex';
+  
   const storedToken = localStorage.getItem('firebaseToken');
   const storedUid = localStorage.getItem('firebaseUid');
   const storedEmail = localStorage.getItem('firebaseEmail');
