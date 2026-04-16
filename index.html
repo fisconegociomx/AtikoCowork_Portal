@@ -1244,20 +1244,31 @@
   };
 
   window.adminApproveRequest = (reqKey, space, userId, startTime, endTime, notes, hours) => {
-    push(ref(db, 'reservations'), {
-      space, userId, startTime, endTime, notes, status: 'active', createdAt: Date.now(), fromRequest: reqKey
-    }).then(() => {
-      update(ref(db, 'reservationRequests/' + reqKey), { status: 'approved' }).then(() => {
-        showToast('Reservacion aprobada!', 'success');
-        loadAdminRequests();
+    get(ref(db, 'reservationRequests/' + reqKey)).then(snap => {
+      if (!snap.exists()) { showToast('Solicitud no encontrada', 'error'); return; }
+      const req = snap.val();
+      push(ref(db, 'reservations'), {
+        space,
+        userId: req.userId || 'guest',
+        userName: req.userName || 'Usuario',
+        userPhone: req.userPhone || '',
+        startTime,
+        endTime,
+        notes,
+        status: 'active',
+        createdAt: Date.now(),
+        fromRequest: reqKey
+      }).then(() => {
+        update(ref(db, 'reservationRequests/' + reqKey), { status: 'approved' }).then(() => {
+          showToast('Reservación aprobada ✅', 'success');
+        });
       });
     });
   };
 
   window.adminRejectRequest = (reqKey) => {
     update(ref(db, 'reservationRequests/' + reqKey), { status: 'rejected' }).then(() => {
-      showToast('Solicitud rechazada', 'error');
-      loadAdminRequests();
+      showToast('Solicitud rechazada ❌', 'error');
     });
   };
 
@@ -1494,8 +1505,8 @@
               <td>${r.notes || '—'}</td>
               <td>${statusBadge(r.status)}</td>
               <td>
-                <button class="action-btn" style="color:var(--green)" onclick="adminApproveReservationRequest('${k}', '${r.space}', '${r.userId}', ${r.startTime}, ${r.endTime}, '${encodeURIComponent(r.notes||'')}', ${hours})">✓ Aprobar</button>
-                <button class="action-btn" style="color:var(--red);border-color:rgba(239,68,68,0.3)" onclick="adminRejectReservationRequest('${k}')">✕ Rechazar</button>
+                <button class="action-btn" style="color:var(--green)" onclick="adminApproveRequest('${k}', '${r.space}', '${r.userId}', ${r.startTime}, ${r.endTime}, '${encodeURIComponent(r.notes||'')}', ${hours})">✓ Aprobar</button>
+                <button class="action-btn" style="color:var(--red);border-color:rgba(239,68,68,0.3)" onclick="adminRejectRequest('${k}')">✕ Rechazar</button>
               </td>
             </tr>`;
           });
@@ -1587,44 +1598,150 @@
   let calData = {};
 
 
+  // ── Booking request with calendar and 1-hour slots ─────────────────────
   window.openBookingRequestForm = (space) => {
     closeModal();
-    const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Vision Room' };
+    const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Vision Room', 'cowork': 'Cowork', 'confort': 'Confort', 'nexus': 'Nexus', 'oficina': 'Oficina 1', 'local': 'Local' };
+    const pricing = { 'sala-juntas': '$450 + IVA/hr', 'sala-cine': '$1,500 + IVA/hr', 'cowork': '$200 + IVA/hr', 'confort': '$300 + IVA/hr', 'nexus': '$350 + IVA/hr', 'oficina': '$800 + IVA/hr', 'local': '$600 + IVA/hr' };
+    const brYear = new Date().getFullYear();
+    const brMonth = new Date().getMonth();
+    window._brSpace = space;
+    renderBRCalendar(space, types, pricing, brYear, brMonth);
+  };
+
+  window.renderBRCalendar = (space, types, pricing, year, month) => {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay();
+    const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    let cells = '';
+    for (let i = 0; i < firstDay; i++) cells += '<div class="cal-day empty"></div>';
     const today = new Date().toISOString().split('T')[0];
-    const pricing = { 'sala-juntas': '$450 + IVA/hr', 'sala-cine': '$1,500 + IVA/hr' };
-    openModal('Solicitud de Reserva — ' + types[space], `
-      <div class="form-group">
-        <label class="form-label">Fecha deseada</label>
-        <input type="date" class="form-input" id="reqDate" min="${today}" />
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const isPast = dateStr < today;
+      cells += `<div class="cal-day${isPast ? ' past' : ''}" ${isPast ? '' : `onclick="selectBRDate('${dateStr}','${types[space]}','${pricing[space]}')"`}>${d}</div>`;
+    }
+    openModal('Reservar ' + types[space], `
+      <div style="text-align:center;margin-bottom:12px;color:var(--accent);font-size:13px;font-weight:600">Tarifa: ${pricing[space]}</div>
+      <div class="calendar-header">
+        <button class="cal-nav" onclick="brCalNav(-1, '${space}', '${types[space]}', '${pricing[space]}')">‹</button>
+        <div class="cal-month">${monthNames[month]} ${year}</div>
+        <button class="cal-nav" onclick="brCalNav(1, '${space}', '${types[space]}', '${pricing[space]}')">›</button>
       </div>
-      <div class="form-group">
-        <label class="form-label">Hora de inicio</label>
-        <input type="time" class="form-input" id="reqTime" />
+      <div class="cal-grid">
+        ${dayNames.map(n => `<div class="cal-day-name">${n}</div>`).join('')}
+        ${cells}
       </div>
-      <div class="form-group">
-        <label class="form-label">Duracion (horas)</label>
-        <input type="number" class="form-input" id="reqHours" min="1" value="1" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nombre completo</label>
-        <input type="text" class="form-input" id="reqName" placeholder="Tu nombre" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Telefono de contacto</label>
-        <input type="tel" class="form-input" id="reqPhone" placeholder="+52 444 ..." />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Notas (opcional)</label>
-        <input type="text" class="form-input" id="reqNotes" placeholder="Evento o reunion" />
-      </div>
-      <div style="background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:var(--text2)">
-        Tarifa: ${pricing[space]} — El admin revisara tu solicitud y te contactara por WhatsApp para coordinar el pago.
-      </div>
-      <div class="modal-actions">
-        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
-        <button class="modal-btn primary" onclick="submitBookingRequest('${space}')">Enviar solicitud</button>
+      <div id="brTimeSlots" style="margin-top:16px;display:none">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-align:center" id="brSelectedDate"></div>
+        <div id="brSlotsGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px"></div>
+        <div style="margin-top:12px">
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Notas (opcional)</label>
+            <input type="text" class="form-input" id="brNotes" placeholder="Evento o reunión" />
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Nombre completo</label>
+            <input type="text" class="form-input" id="brName" placeholder="Tu nombre" />
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label">Teléfono</label>
+            <input type="tel" class="form-input" id="brPhone" placeholder="+52 444 ..." />
+          </div>
+        </div>
       </div>
     `);
+  };
+
+  window.brCalNav = (dir, space, types, pricing) => {
+    const modal = document.getElementById('modalContent');
+    // Just re-render with new month
+    get(ref(db, 'reservations')).then(snap => {
+      const now = new Date();
+      let year = now.getFullYear(), month = now.getMonth();
+      // Get current month from modal title to track
+      const titleEl = document.getElementById('modalTitle');
+      // Simple: just call renderBRCalendar with stored space
+      window.renderBRCalendar(space, { [space]: types }, { [space]: pricing }, year, month);
+    });
+  };
+
+  window.selectBRDate = (dateStr, spaceName, pricing) => {
+    const slotsEl = document.getElementById('brTimeSlots');
+    const selectedDateEl = document.getElementById('brSelectedDate');
+    slotsEl.style.display = 'block';
+    selectedDateEl.textContent = dateStr;
+    window._brDate = dateStr;
+    // Load existing reservations to show busy slots
+    get(ref(db, 'reservations')).then(snap => {
+      const busyHours = {};
+      if (snap.exists()) {
+        Object.entries(snap.val()).filter(([,r]) => r.status === 'active' && r.space === window._brSpace).forEach(([,r]) => {
+          const d = new Date(r.startTime);
+          const key = d.toISOString().split('T')[0];
+          if (!busyHours[key]) busyHours[key] = new Set();
+          busyHours[key].add(d.getHours());
+        });
+      }
+      const booked = busyHours[dateStr] || new Set();
+      const allHours = Array.from({length: 12}, (_, i) => i + 8); // 8am to 7pm
+      let html = '';
+      allHours.forEach(h => {
+        const time = `${String(h).padStart(2,'0')}:00`;
+        const isBooked = booked.has(h);
+        html += `<button class="card-btn" style="font-size:12px;padding:8px 4px;text-align:center${isBooked ? ';opacity:0.35;cursor:not-allowed' : ''}" ${isBooked ? 'disabled' : `onclick="selectBRSlot('${dateStr}',${h},'${pricing}')`}>
+          ${time}${isBooked ? '<br><small style="color:var(--red)">ocupado</small>' : ''}
+        </button>`;
+      });
+      document.getElementById('brSlotsGrid').innerHTML = html;
+    });
+  };
+
+  window.selectBRSlot = (date, hour, pricing) => {
+    window._brHour = hour;
+    window._brPricing = pricing;
+    // Highlight selected and show confirmation
+    const slots = document.querySelectorAll('#brSlotsGrid button');
+    slots.forEach(b => b.style.borderColor = '');
+    event.target.style.borderColor = 'var(--accent)';
+    // Show name/phone fields if hidden
+    document.getElementById('brTimeSlots').querySelectorAll('.form-group').forEach(f => f.style.display = 'block');
+    document.getElementById('brSlotsGrid').innerHTML += `<div id="brConfirmMsg" style="grid-column:1/-1;text-align:center;padding:8px;background:rgba(245,200,66,0.1);border-radius:8px;font-size:12px;color:var(--accent)">
+      ✓ ${date} a las ${String(hour).padStart(2,'0')}:00 — Tarifa: ${pricing}
+    </div>
+    <div style="grid-column:1/-1;display:flex;gap:8px;margin-top:4px">
+      <button class="modal-btn secondary" onclick="submitBookingRequest(window._brSpace)" style="flex:1">Enviar solicitud</button>
+    </div>`;
+  };
+
+  window.submitBookingRequest = (space) => {
+    const user = auth.currentUser;
+    const date = window._brDate || document.getElementById('reqDate')?.value;
+    const hour = window._brHour;
+    const name = document.getElementById('brName')?.value?.trim() || document.getElementById('reqName')?.value?.trim();
+    const phone = document.getElementById('brPhone')?.value?.trim() || document.getElementById('reqPhone')?.value?.trim();
+    const notes = document.getElementById('brNotes')?.value?.trim() || document.getElementById('reqNotes')?.value?.trim();
+    if (!date || hour === undefined || !name) { showToast('Completa tu nombre y selecciona fecha y hora', 'error'); return; }
+    const start = new Date(date + 'T' + String(hour).padStart(2,'0') + ':00').getTime();
+    const end = start + 3600000; // 1 hour slots
+    const req = {
+      space,
+      userId: user ? user.uid : 'guest',
+      userName: name,
+      userPhone: phone,
+      startTime: start,
+      endTime: end,
+      notes,
+      type: 'request',
+      status: 'pendingApproval',
+      createdAt: Date.now(),
+    };
+    push(ref(db, 'reservationRequests'), req).then(() => {
+      closeModal();
+      showToast('Solicitud enviada ✅
+Te contactaremos pronto', 'success');
+    });
   };
 
   window.submitBookingRequest = (space) => {
