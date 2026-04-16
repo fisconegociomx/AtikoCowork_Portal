@@ -1758,8 +1758,7 @@
     };
     push(ref(db, 'reservationRequests'), req).then(() => {
       closeModal();
-      showToast('Solicitud enviada ✅
-Te contactaremos pronto', 'success');
+      showToast('Solicitud enviada ✅ Te contactaremos pronto', 'success');
     });
   };
 
@@ -2048,8 +2047,7 @@ Te contactaremos pronto', 'success');
     };
     push(ref(db, 'membershipApplications'), application).then(() => {
       closeModal();
-      showToast('Solicitud enviada con éxito ✅\nTe contactaremos pronto', 'success');
-      // Update user profile with contract folio so banner doesn't show again
+      showToast('Solicitud enviada con éxito ✅ Te contactaremos pronto', 'success');
       update(ref(db, 'users/' + user.uid), { contractFolio: folio, contractTipo: tipo });
       document.getElementById('membershipBanner').style.display = 'none';
     });
