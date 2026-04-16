@@ -1633,44 +1633,47 @@
         ${dayNames.map(n => `<div class="cal-day-name">${n}</div>`).join('')}
         ${cells}
       </div>
-      <div id="brTimeSlots" style="margin-top:16px;display:none">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-align:center" id="brSelectedDate"></div>
-        <div id="brSlotsGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px"></div>
-        <div style="margin-top:12px">
-          <div class="form-group" style="margin-bottom:8px">
-            <label class="form-label">Notas (opcional)</label>
-            <input type="text" class="form-input" id="brNotes" placeholder="Evento o reunión" />
-          </div>
-          <div class="form-group" style="margin-bottom:8px">
-            <label class="form-label">Nombre completo</label>
-            <input type="text" class="form-input" id="brName" placeholder="Tu nombre" />
-          </div>
-          <div class="form-group" style="margin-bottom:8px">
-            <label class="form-label">Teléfono</label>
-            <input type="tel" class="form-input" id="brPhone" placeholder="+52 444 ..." />
-          </div>
+      <div id="brTimeSlots" style="margin-top:16px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-align:center" id="brSelectedDate">Selecciona un día para ver horarios</div>
+        <div id="brSlotsGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px"></div>
+        <div class="form-group" style="margin-bottom:8px;display:none" id="brNotesGroup">
+          <label class="form-label">Notas (opcional)</label>
+          <input type="text" class="form-input" id="brNotes" placeholder="Evento o reunión" />
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Nombre completo *</label>
+          <input type="text" class="form-input" id="brName" placeholder="Tu nombre" />
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Teléfono</label>
+          <input type="tel" class="form-input" id="brPhone" placeholder="+52 444 ..." />
         </div>
       </div>
     `);
   };
 
-  window.brCalNav = (dir, space, types, pricing) => {
-    const modal = document.getElementById('modalContent');
-    // Just re-render with new month
-    get(ref(db, 'reservations')).then(snap => {
-      const now = new Date();
-      let year = now.getFullYear(), month = now.getMonth();
-      // Get current month from modal title to track
-      const titleEl = document.getElementById('modalTitle');
-      // Simple: just call renderBRCalendar with stored space
-      window.renderBRCalendar(space, { [space]: types }, { [space]: pricing }, year, month);
-    });
+  window.brCalNav = (dir, space, typesStr, pricingStr) => {
+    // typesStr and pricingStr are strings (the display names), we reconstruct objects
+    const typesObj = { [space]: typesStr };
+    const pricingObj = { [space]: pricingStr };
+    // Get current displayed month from modal
+    const monthText = document.querySelector('.cal-month')?.textContent || '';
+    const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const now = new Date();
+    let year = now.getFullYear(), month = now.getMonth();
+    // Try to parse current month from displayed text
+    months.forEach((m, i) => { if (monthText.startsWith(m)) month = i; });
+    month += dir;
+    if (month > 11) { month = 0; year++; }
+    if (month < 0) { month = 11; year--; }
+    window.renderBRCalendar(space, typesObj, pricingObj, year, month);
   };
 
   window.selectBRDate = (dateStr, spaceName, pricing) => {
     const slotsEl = document.getElementById('brTimeSlots');
     const selectedDateEl = document.getElementById('brSelectedDate');
     slotsEl.style.display = 'block';
+    document.getElementById('brNotesGroup').style.display = 'block';
     selectedDateEl.textContent = dateStr;
     window._brDate = dateStr;
     // Load existing reservations to show busy slots
@@ -1690,7 +1693,7 @@
       allHours.forEach(h => {
         const time = `${String(h).padStart(2,'0')}:00`;
         const isBooked = booked.has(h);
-        html += `<button class="card-btn" style="font-size:12px;padding:8px 4px;text-align:center${isBooked ? ';opacity:0.35;cursor:not-allowed' : ''}" ${isBooked ? 'disabled' : `onclick="selectBRSlot('${dateStr}',${h},'${pricing}')`}>
+        html += `<button class="card-btn" style="font-size:12px;padding:8px 4px;text-align:center${isBooked ? ';opacity:0.35;cursor:not-allowed' : ''}" ${isBooked ? 'disabled' : `onclick="selectBRSlot('${dateStr}',${h},'${pricing}', this)`}>
           ${time}${isBooked ? '<br><small style="color:var(--red)">ocupado</small>' : ''}
         </button>`;
       });
@@ -1698,20 +1701,22 @@
     });
   };
 
-  window.selectBRSlot = (date, hour, pricing) => {
+  window.selectBRSlot = (date, hour, pricing, el) => {
     window._brHour = hour;
     window._brPricing = pricing;
-    // Highlight selected and show confirmation
-    const slots = document.querySelectorAll('#brSlotsGrid button');
-    slots.forEach(b => b.style.borderColor = '');
-    event.target.style.borderColor = 'var(--accent)';
-    // Show name/phone fields if hidden
-    document.getElementById('brTimeSlots').querySelectorAll('.form-group').forEach(f => f.style.display = 'block');
-    document.getElementById('brSlotsGrid').innerHTML += `<div id="brConfirmMsg" style="grid-column:1/-1;text-align:center;padding:8px;background:rgba(245,200,66,0.1);border-radius:8px;font-size:12px;color:var(--accent)">
+    // Highlight selected slot
+    document.querySelectorAll('#brSlotsGrid button').forEach(b => b.style.borderColor = '');
+    if (el) el.style.borderColor = 'var(--accent)';
+    // Show form fields
+    document.querySelectorAll('#brTimeSlots .form-group').forEach(f => f.style.display = 'block');
+    // Append confirmation + submit button
+    const confirmDiv = document.getElementById('brConfirmMsg');
+    if (confirmDiv) confirmDiv.remove();
+    document.getElementById('brSlotsGrid').innerHTML += `<div id="brConfirmMsg" style="grid-column:1/-1;text-align:center;padding:10px;background:rgba(245,200,66,0.1);border-radius:8px;font-size:13px;color:var(--accent);margin-top:6px">
       ✓ ${date} a las ${String(hour).padStart(2,'0')}:00 — Tarifa: ${pricing}
     </div>
-    <div style="grid-column:1/-1;display:flex;gap:8px;margin-top:4px">
-      <button class="modal-btn secondary" onclick="submitBookingRequest(window._brSpace)" style="flex:1">Enviar solicitud</button>
+    <div style="grid-column:1/-1;margin-top:8px">
+      <button class="modal-btn primary" onclick="submitBookingRequest(window._brSpace)" style="width:100%;padding:12px">Enviar solicitud</button>
     </div>`;
   };
 
