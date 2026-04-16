@@ -823,12 +823,11 @@
 </script>
 
 <!-- Firebase -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getDatabase, ref, set, get, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
-  const firebaseConfig = {
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+const firebaseConfig = {
     apiKey: "AIzaSyCQQF8qCconFkLkkWpPu2r7h4ARhCTSuEY",
     authDomain: "atikocoworkportal.firebaseapp.com",
     databaseURL: "https://atikocoworkportal-default-rtdb.firebaseio.com",
@@ -839,9 +838,9 @@
     measurementId: "G-Q02Z6MFWEZ"
   };
 
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getDatabase(app);
+  const app = firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   let isLogin = true;
@@ -872,7 +871,7 @@
 
     if (isLogin) {
       btn.disabled = true; btn.textContent = 'Cargando...';
-      signInWithEmailAndPassword(auth, email, password)
+      auth.signInWithEmailAndPassword(email, password)
         .then(() => { window.location.reload(); })
         .catch(e => { showError(friendlyError(e.code)); btn.disabled = false; btn.textContent = 'Entrar'; });
     } else {
@@ -885,11 +884,11 @@
       if (password.length < 6) { showError('La contraseña debe tener al menos 6 caracteres'); return; }
 
       btn.disabled = true; btn.textContent = 'Creando cuenta...';
-      createUserWithEmailAndPassword(auth, email, password)
+      auth.createUserWithEmailAndPassword(email, password)
         .then((userCredential) => {
           // Create user profile in DB
           const uid = userCredential.user.uid;
-          return set(ref(db, 'users/' + uid), {
+          return set(firebase.database().ref('users/' + uid), {
             name: nombre + ' ' + apellido,
             firstName: nombre,
             lastName: apellido,
@@ -906,7 +905,7 @@
     }
   };
 
-  window.logout = () => signOut(auth).then(() => window.location.reload());
+  window.logout = () => auth.signOut().then(() => window.location.reload());
 
   window.showError = (msg) => {
     const el = document.getElementById('authError');
@@ -927,7 +926,7 @@
   };
 
   // ── Auth state ───────────────────────────────────────────────────────────
-  onAuthStateChanged(auth, user => {
+  auth.onAuthStateChanged( user => {
     if (user) {
       document.getElementById('authScreen').style.display = 'none';
       document.getElementById('dashboardSection').style.display = 'none';
@@ -984,7 +983,7 @@
     const section = document.getElementById('myReservationsSection');
     if (!el) return;
     const now = Date.now();
-    Promise.all([get(ref(db, 'reservations')), get(ref(db, 'users/' + uid))]).then(([snap, userSnap]) => {
+    Promise.all([get(firebase.database().ref('reservations')), get(firebase.database().ref('users/' + uid))]).then(([snap, userSnap]) => {
       const userData = userSnap.val() || {};
       const memberHours = userData.memberHours || { sala: 0, vision: 0 };
       const isMember = userData.contractStatus === 'approved' || !!userData.contractFolio;
@@ -1046,7 +1045,7 @@
   };
 
   window.openRescheduleModal = (resKey) => {
-    get(ref(db, 'reservations/' + resKey)).then(snap => {
+    get(firebase.database().ref('reservations/' + resKey)).then(snap => {
       if (!snap.exists()) { showToast('Reservacion no encontrada', 'error'); return; }
       const r = snap.val();
       const today = new Date().toISOString().split('T')[0];
@@ -1078,12 +1077,12 @@
     if (!user) return;
     const updates = refundHours ? { status: 'cancelled', refunded: true } : { status: 'cancelled', refunded: false };
     const pHours = refundHours ? { [space]: (1 * 3600000) } : null;
-    Promise.all([update(ref(db, 'reservations/' + resKey), updates)]).then(() => {
+    Promise.all([update(firebase.database().ref('reservations/' + resKey), updates)]).then(() => {
       if (refundHours) {
         const key = space === 'sala-juntas' ? 'sala' : 'vision';
-        get(ref(db, 'users/' + user.uid)).then(uSnap => {
+        get(firebase.database().ref('users/' + user.uid)).then(uSnap => {
           const cur = parseInt(uSnap.val()?.memberHours?.[key] || 0);
-          update(ref(db, 'users/' + user.uid), { [`memberHours.${key}`]: cur + 1 });
+          update(firebase.database().ref('users/' + user.uid), { [`memberHours.${key}`]: cur + 1 });
           showToast('Reservacion cancelada. Hora devuelta.', 'success');
           loadMyReservations(user.uid);
         });
@@ -1101,7 +1100,7 @@
     if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
     const start = new Date(date + 'T' + time).getTime();
     const end = start + hours * 3600000;
-    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
+    update(firebase.database().ref('reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
       closeModal();
       showToast('Reservacion actualizada', 'success');
       loadMyReservations(auth.currentUser.uid);
@@ -1112,7 +1111,7 @@
     const allowance = window.hoursAllowance[membershipClase] || { sala: 0, vision: 0 };
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    get(ref(db, 'reservations')).then(snap => {
+    get(firebase.database().ref('reservations')).then(snap => {
       let salaUsed = 0, visionUsed = 0;
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, r]) => {
@@ -1128,7 +1127,7 @@
   };
 
   window.loadUserData = (user) => {
-    get(ref(db, 'users/' + user.uid)).then(snap => {
+    get(firebase.database().ref('users/' + user.uid)).then(snap => {
       let name = (user.email || '').split('@')[0];
       let isAdmin = false;
       if (snap.exists()) {
@@ -1167,7 +1166,7 @@
   };
 
   window.loadUserStats = (uid) => {
-    get(ref(db, 'reservations')).then(snap => {
+    get(firebase.database().ref('reservations')).then(snap => {
       let count = 0;
       let proximo = null;
       if (snap.exists()) {
@@ -1185,7 +1184,7 @@
         document.getElementById('statProximo').textContent = d.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' });
       }
     });
-    get(ref(db, 'payments')).then(snap => {
+    get(firebase.database().ref('payments')).then(snap => {
       let saldo = 0;
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, p]) => {
@@ -1200,7 +1199,7 @@
 
   // ── Notices ──────────────────────────────────────────────────────────────
   window.loadNotices = () => {
-    onValue(ref(db, 'notices'), snap => {
+    onValue(firebase.database().ref('notices'), snap => {
       const el = document.getElementById('noticesList');
       if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin avisos por el momento</div>'; return; }
       let html = '';
@@ -1218,7 +1217,7 @@
     const el = document.getElementById('adminRequestsList');
     const banner = document.getElementById('adminRequestsBanner');
     if (!el) return;
-    get(ref(db, 'reservationRequests')).then(snap => {
+    get(firebase.database().ref('reservationRequests')).then(snap => {
       if (!snap.exists()) {
         el.innerHTML = '<div class="notice-empty">No hay solicitudes pendientes</div>';
         if (banner) banner.style.display = 'none';
@@ -1260,10 +1259,10 @@
   };
 
   window.adminApproveRequest = (reqKey, space, userId, startTime, endTime, notes, hours) => {
-    get(ref(db, 'reservationRequests/' + reqKey)).then(snap => {
+    get(firebase.database().ref('reservationRequests/' + reqKey)).then(snap => {
       if (!snap.exists()) { showToast('Solicitud no encontrada', 'error'); return; }
       const req = snap.val();
-      push(ref(db, 'reservations'), {
+      push(firebase.database().ref('reservations'), {
         space,
         userId: req.userId || 'guest',
         userName: req.userName || 'Usuario',
@@ -1275,7 +1274,7 @@
         createdAt: Date.now(),
         fromRequest: reqKey
       }).then(() => {
-        update(ref(db, 'reservationRequests/' + reqKey), { status: 'approved' }).then(() => {
+        update(firebase.database().ref('reservationRequests/' + reqKey), { status: 'approved' }).then(() => {
           showToast('Reservación aprobada ✅', 'success');
         });
       });
@@ -1283,7 +1282,7 @@
   };
 
   window.adminRejectRequest = (reqKey) => {
-    update(ref(db, 'reservationRequests/' + reqKey), { status: 'rejected' }).then(() => {
+    update(firebase.database().ref('reservationRequests/' + reqKey), { status: 'rejected' }).then(() => {
       showToast('Solicitud rechazada ❌', 'error');
     });
   };
@@ -1291,7 +1290,7 @@
   window.loadAdminSpaces = () => {
     const el = document.getElementById('adminSpacesList');
     if (!el) return;
-    get(ref(db, 'spaces')).then(snap => {
+    get(firebase.database().ref('spaces')).then(snap => {
       if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin espacios registrados</div>'; return; }
       let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">';
       Object.entries(snap.val()).forEach(([k, s]) => {
@@ -1311,15 +1310,15 @@
   };
 
   window.adminUpdateSpaceStatus = (spaceKey, status) => {
-    update(ref(db, 'spaces/' + spaceKey), { status }).then(() => showToast('Estado actualizado', 'success'));
+    update(firebase.database().ref('spaces/' + spaceKey), { status }).then(() => showToast('Estado actualizado', 'success'));
   };
 
   window.addMemberHours = (uid) => {
     const sala = parseInt(document.getElementById('addHoursSala').value) || 0;
     const vision = parseInt(document.getElementById('addHoursVision').value) || 0;
-    get(ref(db, 'users/' + uid)).then(snap => {
+    get(firebase.database().ref('users/' + uid)).then(snap => {
       const cur = snap.val()?.memberHours || { sala: 0, vision: 0 };
-      update(ref(db, 'users/' + uid), {
+      update(firebase.database().ref('users/' + uid), {
         memberHours: { sala: cur.sala + sala, vision: cur.vision + vision }
       }).then(() => {
         showToast('Horas agregadas al miembro', 'success');
@@ -1331,7 +1330,7 @@
   window.loadAdminMembers = () => {
     const el = document.getElementById('adminMembersList');
     if (!el) return;
-    get(ref(db, 'users')).then(snap => {
+    get(firebase.database().ref('users')).then(snap => {
       if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin miembros</div>'; return; }
       let html = '';
       Object.entries(snap.val()).forEach(([k, u]) => {
@@ -1343,7 +1342,7 @@
           <div style="display:flex;gap:8px;align-items:center">
             <input type="number" class="form-input" id="addSala_${k}" placeholder="Sala" min="0" style="width:70px;font-size:12px" />
             <input type="number" class="form-input" id="addVision_${k}" placeholder="Vision" min="0" style="width:70px;font-size:12px" />
-            <button class="action-btn" onclick="(function(){const s=parseInt(document.getElementById('addSala_${k}').value)||0;const v=parseInt(document.getElementById('addVision_${k}').value)||0;if(s||v){const cur=(${JSON.stringify(u.memberHours||{sala:0,vision:0})});update(ref(db,'users/${k}'),{memberHours:{sala:cur.sala+s,vision:cur.vision+v}}).then(()=>{showToast('Horas agregadas','success');loadAdminMembers();});}}())">+ Agregar horas</button>
+            <button class="action-btn" onclick="(function(){const s=parseInt(document.getElementById('addSala_${k}').value)||0;const v=parseInt(document.getElementById('addVision_${k}').value)||0;if(s||v){const cur=(${JSON.stringify(u.memberHours||{sala:0,vision:0})});update(firebase.database().ref('users/${k}'),{memberHours:{sala:cur.sala+s,vision:cur.vision+v}}).then(()=>{showToast('Horas agregadas','success');loadAdminMembers();});}}())">+ Agregar horas</button>
           </div>
         </div>`;
       });
@@ -1353,7 +1352,7 @@
   };
 
   window.rescheduleReservation = (resKey) => {
-    get(ref(db, 'reservations/' + resKey)).then(snap => {
+    get(firebase.database().ref('reservations/' + resKey)).then(snap => {
       if (!snap.exists()) { showToast('Reservacion no encontrada', 'error'); return; }
       const r = snap.val();
       const today = new Date().toISOString().split('T')[0];
@@ -1376,7 +1375,7 @@
     if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
     const start = new Date(date + 'T' + time).getTime();
     const end = start + hours * 3600000;
-    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
+    update(firebase.database().ref('reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
       closeModal();
       showToast('Reservacion actualizada', 'success');
       loadAdminReservations();
@@ -1385,7 +1384,7 @@
 
   window.adminCancelReservation = (resKey) => {
     if (!confirm('Cancelar esta reservacion?')) return;
-    update(ref(db, 'reservations/' + resKey), { status: 'cancelled' }).then(() => {
+    update(firebase.database().ref('reservations/' + resKey), { status: 'cancelled' }).then(() => {
       showToast('Reservacion cancelada', 'success');
       loadAdminReservations();
     });
@@ -1394,7 +1393,7 @@
   window.loadAdminReservations = () => {
     const el = document.getElementById('adminReservationsList');
     if (!el) return;
-    get(ref(db, 'reservations')).then(snap => {
+    get(firebase.database().ref('reservations')).then(snap => {
       if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin reservaciones</div>'; return; }
       const spaceMap = { 'sala-juntas': '📅 SJ', 'sala-cine': '🔍 VR' };
       let html = '';
@@ -1443,7 +1442,7 @@
 
   // ── Admin data ────────────────────────────────────────────────────────────
   window.loadAdminData = () => {
-    get(ref(db, 'users')).then(snap => {
+    get(firebase.database().ref('users')).then(snap => {
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, u]) => {
@@ -1458,7 +1457,7 @@
       }
       document.getElementById('adminMembersBody').innerHTML = html || '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">Sin miembros aún</td></tr>';
     });
-    get(ref(db, 'spaces')).then(snap => {
+    get(firebase.database().ref('spaces')).then(snap => {
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, s]) => {
@@ -1470,7 +1469,7 @@
       }
       document.getElementById('adminSpacesBody').innerHTML = html || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Sin espacios aún</td></tr>';
     });
-    get(ref(db, 'reservations')).then(snap => {
+    get(firebase.database().ref('reservations')).then(snap => {
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, r]) => {
@@ -1484,7 +1483,7 @@
       }
       document.getElementById('adminReservasBody').innerHTML = html || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Sin reservaciones aún</td></tr>';
     });
-    onValue(ref(db, 'notices'), snap => {
+    onValue(firebase.database().ref('notices'), snap => {
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, n]) => {
@@ -1494,7 +1493,7 @@
       }
       document.getElementById('adminNoticesBody').innerHTML = html || '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Sin avisos publicados</td></tr>';
     });
-    onValue(ref(db, 'reservationRequests'), snap => {
+    onValue(firebase.database().ref('reservationRequests'), snap => {
       let html = '';
       if (snap.exists()) {
         const all = Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt);
@@ -1548,19 +1547,19 @@
   };
 
   window.approveApplication = (k) => {
-    get(ref(db, `membershipApplications/${k}`)).then(snap => {
+    get(firebase.database().ref( `membershipApplications/${k}`)).then(snap => {
       if (!snap.exists()) return;
       const app = snap.val();
       const updates = { status: 'approved' };
       const userUpdates = { contractStatus: 'approved', contractFolio: app.folio || '', contractTipo: app.tipo || '', contractClase: app.clase || '', plan: app.tipo || 'miembro' };
       Promise.all([
-        update(ref(db, `membershipApplications/${k}`), updates),
-        app.userId ? update(ref(db, `users/${app.userId}`), userUpdates) : Promise.resolve(),
+        update(firebase.database().ref( `membershipApplications/${k}`), updates),
+        app.userId ? update(firebase.database().ref( `users/${app.userId}`), userUpdates) : Promise.resolve(),
       ]).then(() => { showToast('Solicitud aprobada ✅\nEl miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     });
   };
   window.rejectApplication = (k) => {
-    update(ref(db, `membershipApplications/${k}`), { status: 'rejected' })
+    update(firebase.database().ref( `membershipApplications/${k}`), { status: 'rejected' })
       .then(() => { showToast('Solicitud rechazada', 'error'); loadAdminData(); });
   };
 
@@ -1716,7 +1715,7 @@
     document.getElementById('brSubmitBtn').textContent = 'Selecciona fecha y horario';
     document.getElementById('brSubmitBtn').style.opacity = '0.4';
     // Load busy hours in real-time from both reservations and reservationRequests
-    Promise.all([get(ref(db, 'reservations')), get(ref(db, 'reservationRequests'))]).then(([resSnap, reqSnap]) => {
+    Promise.all([get(firebase.database().ref('reservations')), get(firebase.database().ref('reservationRequests'))]).then(([resSnap, reqSnap]) => {
       const busyHours = {};
       if (resSnap.exists()) {
         Object.entries(resSnap.val()).filter(([,r]) => r.status === 'active' && r.space === window._brSpace).forEach(([,r]) => {
@@ -1791,7 +1790,7 @@
       status: 'pendingApproval',
       createdAt: Date.now(),
     };
-    push(ref(db, 'reservationRequests'), req).then(() => {
+    push(firebase.database().ref('reservationRequests'), req).then(() => {
       closeModal();
       showToast('Solicitud enviada ✅ Te contactaremos pronto', 'success');
     });
@@ -1820,7 +1819,7 @@
       status: 'pendingApproval',
       createdAt: Date.now(),
     };
-    push(ref(db, 'reservationRequests'), req).then(() => {
+    push(firebase.database().ref('reservationRequests'), req).then(() => {
       closeModal();
       showToast('Solicitud enviada! Te contactaremos por WhatsApp pronto ✅', 'success');
     });
@@ -1833,7 +1832,7 @@
     calYear = new Date().getFullYear();
     calMonth = new Date().getMonth();
     calData = {};
-    const unsub = onValue(ref(db, 'reservations'), snap => {
+    const unsub = onValue(firebase.database().ref('reservations'), snap => {
       calData = {};
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, r]) => {
@@ -1846,7 +1845,7 @@
         });
       }
       // Also load approved reservationRequests to show in member calendar
-      get(ref(db, 'reservationRequests')).then(reqSnap => {
+      get(firebase.database().ref('reservationRequests')).then(reqSnap => {
         if (reqSnap.exists()) {
           Object.entries(reqSnap.val()).forEach(([k, r]) => {
             if (r.space === space && (r.status === 'approved' || r.status === 'pendingApproval')) {
@@ -1977,10 +1976,10 @@
     if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
     const start = new Date(`${date}T${time}`).getTime();
     const end = start + hours * 3600000;
-    get(ref(db, 'users/' + user.uid)).then(snap => {
+    get(firebase.database().ref('users/' + user.uid)).then(snap => {
       const name = snap.exists() ? (snap.val().name || user.email.split('@')[0]) : user.email.split('@')[0];
       const res = { space, userId: user.uid, userName: name, startTime: start, endTime: end, notes, status: 'active', createdAt: Date.now() };
-      push(ref(db, 'reservations'), res).then(() => {
+      push(firebase.database().ref('reservations'), res).then(() => {
         closeModal();
         showToast('Reservación creada con éxito ✅', 'success');
       });
@@ -2092,10 +2091,10 @@
       status: 'pending',
       createdAt: Date.now(),
     };
-    push(ref(db, 'membershipApplications'), application).then(() => {
+    push(firebase.database().ref('membershipApplications'), application).then(() => {
       closeModal();
       showToast('Solicitud enviada con éxito ✅ Te contactaremos pronto', 'success');
-      update(ref(db, 'users/' + user.uid), { contractFolio: folio, contractTipo: tipo });
+      update(firebase.database().ref('users/' + user.uid), { contractFolio: folio, contractTipo: tipo });
       document.getElementById('membershipBanner').style.display = 'none';
     });
   };
@@ -2131,7 +2130,7 @@
     const plan = document.getElementById('newUserPlan').value;
     if (!name || !email) { showToast('Completa los campos', 'error'); return; }
     const uid = email.replace(/[^a-zA-Z0-9]/g, '_');
-    set(ref(db, 'users/' + uid), { name, email, plan, isAdmin: false, createdAt: Date.now() })
+    set(firebase.database().ref('users/' + uid), { name, email, plan, isAdmin: false, createdAt: Date.now() })
       .then(() => { closeModal(); loadAdminData(); showToast('Miembro agregado ✅', 'success'); });
   };
 
@@ -2164,7 +2163,7 @@
     const type = document.getElementById('newSpaceType').value;
     const price = parseFloat(document.getElementById('newSpacePrice').value) || 0;
     if (!name) { showToast('Ingresa el nombre del espacio', 'error'); return; }
-    push(ref(db, 'spaces'), { name, type, pricePerHour: price, createdAt: Date.now() })
+    push(firebase.database().ref('spaces'), { name, type, pricePerHour: price, createdAt: Date.now() })
       .then(() => { closeModal(); loadAdminData(); showToast('Espacio agregado ✅', 'success'); });
   };
 
@@ -2183,11 +2182,11 @@
   window.addNotice = () => {
     const msg = document.getElementById('newNoticeMsg').value.trim();
     if (!msg) { showToast('Escribe un mensaje', 'error'); return; }
-    push(ref(db, 'notices'), { message: msg, createdAt: Date.now() })
+    push(firebase.database().ref('notices'), { message: msg, createdAt: Date.now() })
       .then(() => { closeModal(); loadAdminData(); showToast('Aviso publicado ✅', 'success'); });
   };
 
-  window.deleteNotice = (k) => { if (confirm('Eliminar este aviso?')) remove(ref(db, 'notices/' + k)).then(() => loadAdminData()); };
+  window.deleteNotice = (k) => { if (confirm('Eliminar este aviso?')) remove(firebase.database().ref('notices/' + k)).then(() => loadAdminData()); };
 
   // ── Estado de cuenta ─────────────────────────────────────────────────────
   window.loadCuenta = () => {
@@ -2195,7 +2194,7 @@
     if (!user) return;
     document.getElementById('cuentaLoader').style.display = 'block';
     document.getElementById('cuentaTable').style.display = 'none';
-    get(ref(db, 'payments')).then(snap => {
+    get(firebase.database().ref('payments')).then(snap => {
       let html = '';
       let found = false;
       if (snap.exists()) {
@@ -2235,10 +2234,10 @@
     { name: 'Local 2', type: 'local', pricePerHour: 600, status: 'available' },
   ];
   window.initSpaces = () => {
-    get(ref(db, 'spaces')).then(snap => {
+    get(firebase.database().ref('spaces')).then(snap => {
       if (!snap.exists() || Object.keys(snap.val()).length < 8) {
         defaultSpaces.forEach(s => {
-          push(ref(db, 'spaces'), { ...s, createdAt: Date.now() });
+          push(firebase.database().ref('spaces'), { ...s, createdAt: Date.now() });
         });
       }
     });
@@ -2247,7 +2246,7 @@
 
   // ── Admin member hours edit ───────────────────────────────────────────────
   window.openEditMemberModal = (uid, email, name) => {
-    get(ref(db, 'users/' + uid)).then(snap => {
+    get(firebase.database().ref('users/' + uid)).then(snap => {
       const u = snap.val() || {};
       const cur = u.memberHours || { sala: 0, vision: 0 };
       openModal('Editar Miembro — ' + (name || email), `
@@ -2273,9 +2272,9 @@
   window.saveMemberHours = (uid) => {
     const sala = parseInt(document.getElementById('editSala_' + uid).value) || 0;
     const vision = parseInt(document.getElementById('editVision_' + uid).value) || 0;
-    get(ref(db, 'users/' + uid)).then(snap => {
+    get(firebase.database().ref('users/' + uid)).then(snap => {
       const cur = snap.val()?.memberHours || { sala: 0, vision: 0 };
-      update(ref(db, 'users/' + uid), {
+      update(firebase.database().ref('users/' + uid), {
         memberHours: { sala: cur.sala + sala, vision: cur.vision + vision }
       }).then(() => { closeModal(); showToast('Horas actualizadas ✅', 'success'); loadAdminData(); });
     });
@@ -2324,18 +2323,18 @@
     const price = parseFloat(document.getElementById('editSpacePrice').value) || 0;
     const status = document.getElementById('editSpaceStatus').value;
     if (!name) { showToast('Ingresa el nombre', 'error'); return; }
-    update(ref(db, 'spaces/' + key), { name, type, pricePerHour: price, status }).then(() => {
+    update(firebase.database().ref('spaces/' + key), { name, type, pricePerHour: price, status }).then(() => {
       closeModal(); showToast('Espacio actualizado ✅', 'success'); loadAdminData();
     });
   };
   window.adminDeleteSpace = (key) => {
     if (!confirm('Eliminar este espacio?')) return;
-    remove(ref(db, 'spaces/' + key)).then(() => { showToast('Espacio eliminado', 'success'); loadAdminData(); });
+    remove(firebase.database().ref('spaces/' + key)).then(() => { showToast('Espacio eliminado', 'success'); loadAdminData(); });
   };
 
   // ── Admin reservation reschedule ────────────────────────────────────────
   window.adminRescheduleReservation = (resKey) => {
-    get(ref(db, 'reservations/' + resKey)).then(snap => {
+    get(firebase.database().ref('reservations/' + resKey)).then(snap => {
       if (!snap.exists()) { showToast('Reservación no encontrada', 'error'); return; }
       const r = snap.val();
       const d = new Date(r.startTime);
@@ -2369,7 +2368,7 @@
     if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
     const start = new Date(date + 'T' + time).getTime();
     const end = start + hours * 3600000;
-    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
+    update(firebase.database().ref('reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
       closeModal(); showToast('Reservación actualizada ✅', 'success'); loadAdminData();
     });
   };
