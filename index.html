@@ -814,6 +814,14 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<!-- Show auth screen immediately (before Firebase loads) -->
+<script>
+  (function() {
+    var el = document.getElementById('authScreen');
+    if (el) el.style.display = 'flex';
+  })();
+</script>
+
 <!-- Firebase -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -897,6 +905,12 @@
   };
 
   window.logout = () => signOut(auth).then(() => window.location.reload());
+
+  window.showError = (msg) => {
+    const el = document.getElementById('authError');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+    else alert(msg);
+  };
 
   window.friendlyError = (code) => {
     const map = {
