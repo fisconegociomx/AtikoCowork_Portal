@@ -823,11 +823,7 @@
 </script>
 
 <!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script>
-
+<script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getDatabase, ref, set, get, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
@@ -843,9 +839,9 @@
     measurementId: "G-Q02Z6MFWEZ"
   };
 
-  const app = firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth(app);
-  const db = firebase.database(app);
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getDatabase(app);
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   let isLogin = true;
@@ -874,7 +870,7 @@
 
     if (isLogin) {
       btn.disabled = true; btn.textContent = 'Cargando...';
-      auth.signInWithEmailAndPassword(email, password)
+      signInWithEmailAndPassword(auth, email, password)
         .then(() => { window.location.reload(); })
         .catch(e => { showError(friendlyError(e.code)); btn.disabled = false; btn.textContent = 'Entrar'; });
     } else {
@@ -887,11 +883,11 @@
       if (password.length < 6) { showError('La contraseña debe tener al menos 6 caracteres'); return; }
 
       btn.disabled = true; btn.textContent = 'Creando cuenta...';
-      auth.createUserWithEmailAndPassword(email, password)
+      createUserWithEmailAndPassword(auth, email, password)
         .then((userCredential) => {
           // Create user profile in DB
           const uid = userCredential.user.uid;
-          return db.ref('users/' + uid).set({
+          return set(ref(db, 'users/' + uid), {
             name: nombre + ' ' + apellido,
             firstName: nombre,
             lastName: apellido,
@@ -908,7 +904,7 @@
     }
   };
 
-  window.logout = () => auth.signOut().then(() => window.location.reload());
+  window.logout = () => signOut(auth).then(() => window.location.reload());
 
   window.showError = (msg) => {
     const el = document.getElementById('authError');
@@ -929,7 +925,7 @@
   };
 
   // ── Auth state ───────────────────────────────────────────────────────────
-  auth.onAuthStateChanged(user => {
+  onAuthStateChanged(auth, user => {
     if (user) {
       document.getElementById('authScreen').style.display = 'none';
       document.getElementById('dashboardSection').style.display = 'none';
@@ -986,7 +982,7 @@
     const section = document.getElementById('myReservationsSection');
     if (!el) return;
     const now = Date.now();
-    Promise.all([db.ref('reservations').once('value'), db.ref('users/' + uid).once('value')]).then(([snap, userSnap]) => {
+    Promise.all([get(ref(db, 'reservations')), get(ref(db, 'users/' + uid))]).then(([snap, userSnap]) => {
       const userData = userSnap.val() || {};
       const memberHours = userData.memberHours || { sala: 0, vision: 0 };
       const isMember = userData.contractStatus === 'approved' || !!userData.contractFolio;
@@ -1048,7 +1044,7 @@
   };
 
   window.openRescheduleModal = (resKey) => {
-    db.ref('reservations/' + resKey).once('value').then(snap => {
+    get(ref(db, 'reservations/' + resKey)).then(snap => {
       if (!snap.exists()) { showToast('Reservacion no encontrada', 'error'); return; }
       const r = snap.val();
       const today = new Date().toISOString().split('T')[0];
@@ -1075,18 +1071,17 @@
   };
 
   window.cancelReservation = (resKey, refundHours, space, membershipClase) => {
-    if (!confirm('Estas seguro de cancelar esta reservacion?' + (refundHours ? '' : '
-Perderas la hora invertida'))) return;
+    if (!confirm('Estas seguro de cancelar esta reservacion?' + (refundHours ? '' : '\nPerderas la hora invertida'))) return;
     const user = auth.currentUser;
     if (!user) return;
     const updates = refundHours ? { status: 'cancelled', refunded: true } : { status: 'cancelled', refunded: false };
     const pHours = refundHours ? { [space]: (1 * 3600000) } : null;
-    Promise.all([db.ref('reservations/' + resKey).update(updates)]).then(() => {
+    Promise.all([update(ref(db, 'reservations/' + resKey), updates)]).then(() => {
       if (refundHours) {
         const key = space === 'sala-juntas' ? 'sala' : 'vision';
-        db.ref('users/' + user.uid).once('value').then(uSnap => {
+        get(ref(db, 'users/' + user.uid)).then(uSnap => {
           const cur = parseInt(uSnap.val()?.memberHours?.[key] || 0);
-          db.ref('users/' + user.uid).update({ [`memberHours.${key}`]: cur + 1 });
+          update(ref(db, 'users/' + user.uid), { [`memberHours.${key}`]: cur + 1 });
           showToast('Reservacion cancelada. Hora devuelta.', 'success');
           loadMyReservations(user.uid);
         });
@@ -1104,7 +1099,7 @@ Perderas la hora invertida'))) return;
     if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
     const start = new Date(date + 'T' + time).getTime();
     const end = start + hours * 3600000;
-    db.ref('reservations/' + resKey).update({ startTime: start, endTime: end }).then(() => {
+    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
       closeModal();
       showToast('Reservacion actualizada', 'success');
       loadMyReservations(auth.currentUser.uid);
@@ -1115,7 +1110,7 @@ Perderas la hora invertida'))) return;
     const allowance = window.hoursAllowance[membershipClase] || { sala: 0, vision: 0 };
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    db.ref('reservations').once('value').then(snap => {
+    get(ref(db, 'reservations')).then(snap => {
       let salaUsed = 0, visionUsed = 0;
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, r]) => {
@@ -1131,7 +1126,7 @@ Perderas la hora invertida'))) return;
   };
 
   window.loadUserData = (user) => {
-    db.ref('users/' + user.uid).once('value').then(snap => {
+    get(ref(db, 'users/' + user.uid)).then(snap => {
       let name = (user.email || '').split('@')[0];
       let isAdmin = false;
       if (snap.exists()) {
@@ -1170,7 +1165,7 @@ Perderas la hora invertida'))) return;
   };
 
   window.loadUserStats = (uid) => {
-    db.ref('reservations').once('value').then(snap => {
+    get(ref(db, 'reservations')).then(snap => {
       let count = 0;
       let proximo = null;
       if (snap.exists()) {
@@ -1188,7 +1183,7 @@ Perderas la hora invertida'))) return;
         document.getElementById('statProximo').textContent = d.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' });
       }
     });
-    db.ref('payments').once('value').then(snap => {
+    get(ref(db, 'payments')).then(snap => {
       let saldo = 0;
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, p]) => {
@@ -1203,7 +1198,7 @@ Perderas la hora invertida'))) return;
 
   // ── Notices ──────────────────────────────────────────────────────────────
   window.loadNotices = () => {
-    db.ref('notices').on('value', snap => {
+    onValue(ref(db, 'notices'), snap => {
       const el = document.getElementById('noticesList');
       if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin avisos por el momento</div>'; return; }
       let html = '';
@@ -1221,7 +1216,7 @@ Perderas la hora invertida'))) return;
     const el = document.getElementById('adminRequestsList');
     const banner = document.getElementById('adminRequestsBanner');
     if (!el) return;
-    db.ref('reservationRequests').once('value').then(snap => {
+    get(ref(db, 'reservationRequests')).then(snap => {
       if (!snap.exists()) {
         el.innerHTML = '<div class="notice-empty">No hay solicitudes pendientes</div>';
         if (banner) banner.style.display = 'none';
@@ -1263,10 +1258,10 @@ Perderas la hora invertida'))) return;
   };
 
   window.adminApproveRequest = (reqKey, space, userId, startTime, endTime, notes, hours) => {
-    db.ref('reservationRequests/' + reqKey).once('value').then(snap => {
+    get(ref(db, 'reservationRequests/' + reqKey)).then(snap => {
       if (!snap.exists()) { showToast('Solicitud no encontrada', 'error'); return; }
       const req = snap.val();
-      push(db.ref('reservations'), {
+      push(ref(db, 'reservations'), {
         space,
         userId: req.userId || 'guest',
         userName: req.userName || 'Usuario',
@@ -1278,7 +1273,7 @@ Perderas la hora invertida'))) return;
         createdAt: Date.now(),
         fromRequest: reqKey
       }).then(() => {
-        db.ref('reservationRequests/' + reqKey).update({ status: 'approved' }).then(() => {
+        update(ref(db, 'reservationRequests/' + reqKey), { status: 'approved' }).then(() => {
           showToast('Reservación aprobada ✅', 'success');
         });
       });
@@ -1286,7 +1281,7 @@ Perderas la hora invertida'))) return;
   };
 
   window.adminRejectRequest = (reqKey) => {
-    db.ref('reservationRequests/' + reqKey).update({ status: 'rejected' }).then(() => {
+    update(ref(db, 'reservationRequests/' + reqKey), { status: 'rejected' }).then(() => {
       showToast('Solicitud rechazada ❌', 'error');
     });
   };
@@ -1294,7 +1289,7 @@ Perderas la hora invertida'))) return;
   window.loadAdminSpaces = () => {
     const el = document.getElementById('adminSpacesList');
     if (!el) return;
-    db.ref('spaces').once('value').then(snap => {
+    get(ref(db, 'spaces')).then(snap => {
       if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin espacios registrados</div>'; return; }
       let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">';
       Object.entries(snap.val()).forEach(([k, s]) => {
@@ -1314,15 +1309,15 @@ Perderas la hora invertida'))) return;
   };
 
   window.adminUpdateSpaceStatus = (spaceKey, status) => {
-    db.ref('spaces/' + spaceKey).update({ status }).then(() => showToast('Estado actualizado', 'success'));
+    update(ref(db, 'spaces/' + spaceKey), { status }).then(() => showToast('Estado actualizado', 'success'));
   };
 
   window.addMemberHours = (uid) => {
     const sala = parseInt(document.getElementById('addHoursSala').value) || 0;
     const vision = parseInt(document.getElementById('addHoursVision').value) || 0;
-    db.ref('users/' + uid).once('value').then(snap => {
+    get(ref(db, 'users/' + uid)).then(snap => {
       const cur = snap.val()?.memberHours || { sala: 0, vision: 0 };
-      db.ref('users/' + uid).update({
+      update(ref(db, 'users/' + uid), {
         memberHours: { sala: cur.sala + sala, vision: cur.vision + vision }
       }).then(() => {
         showToast('Horas agregadas al miembro', 'success');
@@ -1334,7 +1329,7 @@ Perderas la hora invertida'))) return;
   window.loadAdminMembers = () => {
     const el = document.getElementById('adminMembersList');
     if (!el) return;
-    db.ref('users').once('value').then(snap => {
+    get(ref(db, 'users')).then(snap => {
       if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin miembros</div>'; return; }
       let html = '';
       Object.entries(snap.val()).forEach(([k, u]) => {
@@ -1346,7 +1341,7 @@ Perderas la hora invertida'))) return;
           <div style="display:flex;gap:8px;align-items:center">
             <input type="number" class="form-input" id="addSala_${k}" placeholder="Sala" min="0" style="width:70px;font-size:12px" />
             <input type="number" class="form-input" id="addVision_${k}" placeholder="Vision" min="0" style="width:70px;font-size:12px" />
-            <button class="action-btn" onclick="(function(){const s=parseInt(document.getElementById('addSala_${k}').value)||0;const v=parseInt(document.getElementById('addVision_${k}').value)||0;if(s||v){const cur=(${JSON.stringify(u.memberHours||{sala:0,vision:0})});db.ref('users/${k}').update({memberHours:{sala:cur.sala+s,vision:cur.vision+v}}).then(()=>{showToast('Horas agregadas','success');loadAdminMembers();});}}())">+ Agregar horas</button>
+            <button class="action-btn" onclick="(function(){const s=parseInt(document.getElementById('addSala_${k}').value)||0;const v=parseInt(document.getElementById('addVision_${k}').value)||0;if(s||v){const cur=(${JSON.stringify(u.memberHours||{sala:0,vision:0})});update(ref(db,'users/${k}'),{memberHours:{sala:cur.sala+s,vision:cur.vision+v}}).then(()=>{showToast('Horas agregadas','success');loadAdminMembers();});}}())">+ Agregar horas</button>
           </div>
         </div>`;
       });
@@ -1356,7 +1351,7 @@ Perderas la hora invertida'))) return;
   };
 
   window.rescheduleReservation = (resKey) => {
-    db.ref('reservations/' + resKey).once('value').then(snap => {
+    get(ref(db, 'reservations/' + resKey)).then(snap => {
       if (!snap.exists()) { showToast('Reservacion no encontrada', 'error'); return; }
       const r = snap.val();
       const today = new Date().toISOString().split('T')[0];
@@ -1379,7 +1374,7 @@ Perderas la hora invertida'))) return;
     if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
     const start = new Date(date + 'T' + time).getTime();
     const end = start + hours * 3600000;
-    db.ref('reservations/' + resKey).update({ startTime: start, endTime: end }).then(() => {
+    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
       closeModal();
       showToast('Reservacion actualizada', 'success');
       loadAdminReservations();
@@ -1388,7 +1383,7 @@ Perderas la hora invertida'))) return;
 
   window.adminCancelReservation = (resKey) => {
     if (!confirm('Cancelar esta reservacion?')) return;
-    db.ref('reservations/' + resKey).update({ status: 'cancelled' }).then(() => {
+    update(ref(db, 'reservations/' + resKey), { status: 'cancelled' }).then(() => {
       showToast('Reservacion cancelada', 'success');
       loadAdminReservations();
     });
@@ -1397,7 +1392,7 @@ Perderas la hora invertida'))) return;
   window.loadAdminReservations = () => {
     const el = document.getElementById('adminReservationsList');
     if (!el) return;
-    db.ref('reservations').once('value').then(snap => {
+    get(ref(db, 'reservations')).then(snap => {
       if (!snap.exists()) { el.innerHTML = '<div class="notice-empty">Sin reservaciones</div>'; return; }
       const spaceMap = { 'sala-juntas': '📅 SJ', 'sala-cine': '🔍 VR' };
       let html = '';
@@ -1446,7 +1441,7 @@ Perderas la hora invertida'))) return;
 
   // ── Admin data ────────────────────────────────────────────────────────────
   window.loadAdminData = () => {
-    db.ref('users').once('value').then(snap => {
+    get(ref(db, 'users')).then(snap => {
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, u]) => {
@@ -1461,7 +1456,7 @@ Perderas la hora invertida'))) return;
       }
       document.getElementById('adminMembersBody').innerHTML = html || '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">Sin miembros aún</td></tr>';
     });
-    db.ref('spaces').once('value').then(snap => {
+    get(ref(db, 'spaces')).then(snap => {
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, s]) => {
@@ -1473,7 +1468,7 @@ Perderas la hora invertida'))) return;
       }
       document.getElementById('adminSpacesBody').innerHTML = html || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">Sin espacios aún</td></tr>';
     });
-    db.ref('reservations').once('value').then(snap => {
+    get(ref(db, 'reservations')).then(snap => {
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, r]) => {
@@ -1487,7 +1482,7 @@ Perderas la hora invertida'))) return;
       }
       document.getElementById('adminReservasBody').innerHTML = html || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Sin reservaciones aún</td></tr>';
     });
-    db.ref('notices').on('value', snap => {
+    onValue(ref(db, 'notices'), snap => {
       let html = '';
       if (snap.exists()) {
         Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt).forEach(([k, n]) => {
@@ -1497,7 +1492,7 @@ Perderas la hora invertida'))) return;
       }
       document.getElementById('adminNoticesBody').innerHTML = html || '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Sin avisos publicados</td></tr>';
     });
-    db.ref('reservationRequests').on('value', snap => {
+    onValue(ref(db, 'reservationRequests'), snap => {
       let html = '';
       if (snap.exists()) {
         const all = Object.entries(snap.val()).sort((a,b) => b[1].createdAt - a[1].createdAt);
@@ -1551,20 +1546,19 @@ Perderas la hora invertida'))) return;
   };
 
   window.approveApplication = (k) => {
-    db.ref(`membershipApplications/${k}`).once('value').then(snap => {
+    get(ref(db, `membershipApplications/${k}`)).then(snap => {
       if (!snap.exists()) return;
       const app = snap.val();
       const updates = { status: 'approved' };
       const userUpdates = { contractStatus: 'approved', contractFolio: app.folio || '', contractTipo: app.tipo || '', contractClase: app.clase || '', plan: app.tipo || 'miembro' };
       Promise.all([
-        db.ref(`membershipApplications/${k}`).update(updates),
-        app.userId ? db.ref(`users/${app.userId}`).update(userUpdates) : Promise.resolve(),
-      ]).then(() => { showToast('Solicitud aprobada ✅
-El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
+        update(ref(db, `membershipApplications/${k}`), updates),
+        app.userId ? update(ref(db, `users/${app.userId}`), userUpdates) : Promise.resolve(),
+      ]).then(() => { showToast('Solicitud aprobada ✅\nEl miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     });
   };
   window.rejectApplication = (k) => {
-    db.ref(`membershipApplications/${k}`).update({ status: 'rejected' })
+    update(ref(db, `membershipApplications/${k}`), { status: 'rejected' })
       .then(() => { showToast('Solicitud rechazada', 'error'); loadAdminData(); });
   };
 
@@ -1720,7 +1714,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     document.getElementById('brSubmitBtn').textContent = 'Selecciona fecha y horario';
     document.getElementById('brSubmitBtn').style.opacity = '0.4';
     // Load busy hours in real-time from both reservations and reservationRequests
-    Promise.all([db.ref('reservations').once('value'), db.ref('reservationRequests').once('value')]).then(([resSnap, reqSnap]) => {
+    Promise.all([get(ref(db, 'reservations')), get(ref(db, 'reservationRequests'))]).then(([resSnap, reqSnap]) => {
       const busyHours = {};
       if (resSnap.exists()) {
         Object.entries(resSnap.val()).filter(([,r]) => r.status === 'active' && r.space === window._brSpace).forEach(([,r]) => {
@@ -1795,7 +1789,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
       status: 'pendingApproval',
       createdAt: Date.now(),
     };
-    push(db.ref('reservationRequests'), req).then(() => {
+    push(ref(db, 'reservationRequests'), req).then(() => {
       closeModal();
       showToast('Solicitud enviada ✅ Te contactaremos pronto', 'success');
     });
@@ -1824,7 +1818,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
       status: 'pendingApproval',
       createdAt: Date.now(),
     };
-    push(db.ref('reservationRequests'), req).then(() => {
+    push(ref(db, 'reservationRequests'), req).then(() => {
       closeModal();
       showToast('Solicitud enviada! Te contactaremos por WhatsApp pronto ✅', 'success');
     });
@@ -1837,7 +1831,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     calYear = new Date().getFullYear();
     calMonth = new Date().getMonth();
     calData = {};
-    const unsub = db.ref('reservations').on('value', snap => {
+    const unsub = onValue(ref(db, 'reservations'), snap => {
       calData = {};
       if (snap.exists()) {
         Object.entries(snap.val()).forEach(([k, r]) => {
@@ -1850,7 +1844,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
         });
       }
       // Also load approved reservationRequests to show in member calendar
-      db.ref('reservationRequests').once('value').then(reqSnap => {
+      get(ref(db, 'reservationRequests')).then(reqSnap => {
         if (reqSnap.exists()) {
           Object.entries(reqSnap.val()).forEach(([k, r]) => {
             if (r.space === space && (r.status === 'approved' || r.status === 'pendingApproval')) {
@@ -1981,10 +1975,10 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
     const start = new Date(`${date}T${time}`).getTime();
     const end = start + hours * 3600000;
-    db.ref('users/' + user.uid).once('value').then(snap => {
+    get(ref(db, 'users/' + user.uid)).then(snap => {
       const name = snap.exists() ? (snap.val().name || user.email.split('@')[0]) : user.email.split('@')[0];
       const res = { space, userId: user.uid, userName: name, startTime: start, endTime: end, notes, status: 'active', createdAt: Date.now() };
-      push(db.ref('reservations'), res).then(() => {
+      push(ref(db, 'reservations'), res).then(() => {
         closeModal();
         showToast('Reservación creada con éxito ✅', 'success');
       });
@@ -2096,10 +2090,10 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
       status: 'pending',
       createdAt: Date.now(),
     };
-    push(db.ref('membershipApplications'), application).then(() => {
+    push(ref(db, 'membershipApplications'), application).then(() => {
       closeModal();
       showToast('Solicitud enviada con éxito ✅ Te contactaremos pronto', 'success');
-      db.ref('users/' + user.uid).update({ contractFolio: folio, contractTipo: tipo });
+      update(ref(db, 'users/' + user.uid), { contractFolio: folio, contractTipo: tipo });
       document.getElementById('membershipBanner').style.display = 'none';
     });
   };
@@ -2135,7 +2129,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     const plan = document.getElementById('newUserPlan').value;
     if (!name || !email) { showToast('Completa los campos', 'error'); return; }
     const uid = email.replace(/[^a-zA-Z0-9]/g, '_');
-    db.ref('users/' + uid).set({ name, email, plan, isAdmin: false, createdAt: Date.now() })
+    set(ref(db, 'users/' + uid), { name, email, plan, isAdmin: false, createdAt: Date.now() })
       .then(() => { closeModal(); loadAdminData(); showToast('Miembro agregado ✅', 'success'); });
   };
 
@@ -2168,7 +2162,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     const type = document.getElementById('newSpaceType').value;
     const price = parseFloat(document.getElementById('newSpacePrice').value) || 0;
     if (!name) { showToast('Ingresa el nombre del espacio', 'error'); return; }
-    push(db.ref('spaces'), { name, type, pricePerHour: price, createdAt: Date.now() })
+    push(ref(db, 'spaces'), { name, type, pricePerHour: price, createdAt: Date.now() })
       .then(() => { closeModal(); loadAdminData(); showToast('Espacio agregado ✅', 'success'); });
   };
 
@@ -2187,11 +2181,11 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
   window.addNotice = () => {
     const msg = document.getElementById('newNoticeMsg').value.trim();
     if (!msg) { showToast('Escribe un mensaje', 'error'); return; }
-    push(db.ref('notices'), { message: msg, createdAt: Date.now() })
+    push(ref(db, 'notices'), { message: msg, createdAt: Date.now() })
       .then(() => { closeModal(); loadAdminData(); showToast('Aviso publicado ✅', 'success'); });
   };
 
-  window.deleteNotice = (k) => { if (confirm('Eliminar este aviso?')) db.ref('notices/' + k).remove().then(() => loadAdminData()); };
+  window.deleteNotice = (k) => { if (confirm('Eliminar este aviso?')) remove(ref(db, 'notices/' + k)).then(() => loadAdminData()); };
 
   // ── Estado de cuenta ─────────────────────────────────────────────────────
   window.loadCuenta = () => {
@@ -2199,7 +2193,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     if (!user) return;
     document.getElementById('cuentaLoader').style.display = 'block';
     document.getElementById('cuentaTable').style.display = 'none';
-    db.ref('payments').once('value').then(snap => {
+    get(ref(db, 'payments')).then(snap => {
       let html = '';
       let found = false;
       if (snap.exists()) {
@@ -2239,10 +2233,10 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     { name: 'Local 2', type: 'local', pricePerHour: 600, status: 'available' },
   ];
   window.initSpaces = () => {
-    db.ref('spaces').once('value').then(snap => {
+    get(ref(db, 'spaces')).then(snap => {
       if (!snap.exists() || Object.keys(snap.val()).length < 8) {
         defaultSpaces.forEach(s => {
-          push(db.ref('spaces'), { ...s, createdAt: Date.now() });
+          push(ref(db, 'spaces'), { ...s, createdAt: Date.now() });
         });
       }
     });
@@ -2251,7 +2245,7 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
 
   // ── Admin member hours edit ───────────────────────────────────────────────
   window.openEditMemberModal = (uid, email, name) => {
-    db.ref('users/' + uid).once('value').then(snap => {
+    get(ref(db, 'users/' + uid)).then(snap => {
       const u = snap.val() || {};
       const cur = u.memberHours || { sala: 0, vision: 0 };
       openModal('Editar Miembro — ' + (name || email), `
@@ -2277,9 +2271,9 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
   window.saveMemberHours = (uid) => {
     const sala = parseInt(document.getElementById('editSala_' + uid).value) || 0;
     const vision = parseInt(document.getElementById('editVision_' + uid).value) || 0;
-    db.ref('users/' + uid).once('value').then(snap => {
+    get(ref(db, 'users/' + uid)).then(snap => {
       const cur = snap.val()?.memberHours || { sala: 0, vision: 0 };
-      db.ref('users/' + uid).update({
+      update(ref(db, 'users/' + uid), {
         memberHours: { sala: cur.sala + sala, vision: cur.vision + vision }
       }).then(() => { closeModal(); showToast('Horas actualizadas ✅', 'success'); loadAdminData(); });
     });
@@ -2328,18 +2322,18 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     const price = parseFloat(document.getElementById('editSpacePrice').value) || 0;
     const status = document.getElementById('editSpaceStatus').value;
     if (!name) { showToast('Ingresa el nombre', 'error'); return; }
-    db.ref('spaces/' + key).update({ name, type, pricePerHour: price, status }).then(() => {
+    update(ref(db, 'spaces/' + key), { name, type, pricePerHour: price, status }).then(() => {
       closeModal(); showToast('Espacio actualizado ✅', 'success'); loadAdminData();
     });
   };
   window.adminDeleteSpace = (key) => {
     if (!confirm('Eliminar este espacio?')) return;
-    db.ref('spaces/' + key).remove().then(() => { showToast('Espacio eliminado', 'success'); loadAdminData(); });
+    remove(ref(db, 'spaces/' + key)).then(() => { showToast('Espacio eliminado', 'success'); loadAdminData(); });
   };
 
   // ── Admin reservation reschedule ────────────────────────────────────────
   window.adminRescheduleReservation = (resKey) => {
-    db.ref('reservations/' + resKey).once('value').then(snap => {
+    get(ref(db, 'reservations/' + resKey)).then(snap => {
       if (!snap.exists()) { showToast('Reservación no encontrada', 'error'); return; }
       const r = snap.val();
       const d = new Date(r.startTime);
@@ -2373,11 +2367,10 @@ El miembro ya puede usar sus horas', 'success'); loadAdminData(); });
     if (!date || !time) { showToast('Completa fecha y hora', 'error'); return; }
     const start = new Date(date + 'T' + time).getTime();
     const end = start + hours * 3600000;
-    db.ref('reservations/' + resKey).update({ startTime: start, endTime: end }).then(() => {
+    update(ref(db, 'reservations/' + resKey), { startTime: start, endTime: end }).then(() => {
       closeModal(); showToast('Reservación actualizada ✅', 'success'); loadAdminData();
     });
   };
-
 </script>
 </body>
 </html>
