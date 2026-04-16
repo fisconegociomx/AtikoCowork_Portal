@@ -845,9 +845,11 @@
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   let isLogin = true;
+  window.isLogin = isLogin;
 
   window.toggleAuth = () => {
     isLogin = !isLogin;
+    window.isLogin = isLogin;
     document.getElementById('authBtn').textContent = isLogin ? 'Entrar' : 'Crear cuenta';
     document.getElementById('authToggle').textContent = isLogin ? 'Crear cuenta' : 'Ya tengo cuenta';
     document.getElementById('authToggleLink').textContent = isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Entra';
