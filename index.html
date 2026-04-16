@@ -1617,10 +1617,10 @@
     closeModal();
     const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Vision Room', 'cowork': 'Cowork', 'confort': 'Confort', 'nexus': 'Nexus', 'oficina': 'Oficina 1', 'local': 'Local' };
     const pricing = { 'sala-juntas': '$450 + IVA/hr', 'sala-cine': '$1,500 + IVA/hr', 'cowork': '$200 + IVA/hr', 'confort': '$300 + IVA/hr', 'nexus': '$350 + IVA/hr', 'oficina': '$800 + IVA/hr', 'local': '$600 + IVA/hr' };
-    const brYear = new Date().getFullYear();
-    const brMonth = new Date().getMonth();
     window._brSpace = space;
-    renderBRCalendar(space, types, pricing, brYear, brMonth);
+    window._brSelectedDate = null;
+    window._brSelectedHour = null;
+    renderBRCalendar(space, types, pricing, new Date().getFullYear(), new Date().getMonth());
   };
 
   window.renderBRCalendar = (space, types, pricing, year, month) => {
@@ -1633,11 +1633,14 @@
     const today = new Date().toISOString().split('T')[0];
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const isPast = dateStr < today;
-      cells += `<div class="cal-day${isPast ? ' past' : ''}" ${isPast ? '' : `onclick="selectBRDate('${dateStr}','${types[space]}','${pricing[space]}')"`}>${d}</div>`;
+      const nowMs = Date.now();
+      const minDateMs = nowMs + 24 * 3600000;
+      const dateMs = new Date(dateStr + 'T12:00:00').getTime();
+      const isBlocked = dateMs < minDateMs;
+      cells += `<div class="cal-day${isBlocked ? ' past' : ''}" ${isBlocked ? '' : `onclick="selectBRDate('${dateStr}','${types[space]}','${pricing[space]}')"`}>${d}</div>`;
     }
     openModal('Reservar ' + types[space], `
-      <div style="text-align:center;margin-bottom:12px;color:var(--accent);font-size:13px;font-weight:600">Tarifa: ${pricing[space]}</div>
+      <div style="text-align:center;margin-bottom:8px;color:var(--accent);font-size:13px;font-weight:600">Tarifa: ${pricing[space]} — 1 hora por turno</div>
       <div class="calendar-header">
         <button class="cal-nav" onclick="brCalNav(-1, '${space}', '${types[space]}', '${pricing[space]}')">‹</button>
         <div class="cal-month">${monthNames[month]} ${year}</div>
@@ -1647,21 +1650,25 @@
         ${dayNames.map(n => `<div class="cal-day-name">${n}</div>`).join('')}
         ${cells}
       </div>
-      <div id="brTimeSlots" style="margin-top:16px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-align:center" id="brSelectedDate">Selecciona un día para ver horarios</div>
-        <div id="brSlotsGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px"></div>
-        <div class="form-group" style="margin-bottom:8px;display:none" id="brNotesGroup">
-          <label class="form-label">Notas (opcional)</label>
-          <input type="text" class="form-input" id="brNotes" placeholder="Evento o reunión" />
-        </div>
-        <div class="form-group" style="margin-bottom:8px">
-          <label class="form-label">Nombre completo *</label>
-          <input type="text" class="form-input" id="brName" placeholder="Tu nombre" />
-        </div>
-        <div class="form-group" style="margin-bottom:8px">
-          <label class="form-label">Teléfono</label>
-          <input type="tel" class="form-input" id="brPhone" placeholder="+52 444 ..." />
-        </div>
+      <div id="brTimeSection" style="margin-top:12px;display:none">
+        <div style="font-size:12px;color:var(--accent);margin-bottom:8px;text-align:center;font-weight:600" id="brDateLabel">Horarios disponibles</div>
+        <div id="brSlotsContainer" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px"></div>
+        <div id="brSelectedSummary" style="text-align:center;padding:8px;background:rgba(245,200,66,0.1);border-radius:8px;font-size:13px;color:var(--accent);margin-bottom:12px;display:none"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">Nombre completo *</label>
+        <input type="text" class="form-input" id="brName" placeholder="Tu nombre completo" />
+      </div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">Teléfono</label>
+        <input type="tel" class="form-input" id="brPhone" placeholder="+52 444 ..." />
+      </div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">Notas (opcional)</label>
+        <input type="text" class="form-input" id="brNotes" placeholder="Evento o reunión" />
+      </div>
+      <div style="margin-top:12px">
+        <button class="modal-btn primary" id="brSubmitBtn" onclick="submitBookingRequest(window._brSpace)" disabled style="width:100%;padding:12px;opacity:0.4">Selecciona fecha y horario</button>
       </div>
     `);
   };
@@ -1684,16 +1691,31 @@
   };
 
   window.selectBRDate = (dateStr, spaceName, pricing) => {
-    const slotsEl = document.getElementById('brTimeSlots');
-    const selectedDateEl = document.getElementById('brSelectedDate');
-    slotsEl.style.display = 'block';
-    document.getElementById('brNotesGroup').style.display = 'block';
-    selectedDateEl.textContent = dateStr;
-    window._brDate = dateStr;
-    // Load existing reservations + approved/pending requests to show busy slots
+    // 24-hour advance restriction: only allow dates where now + 24h <= date
+    const now = Date.now();
+    const minBookTime = now + 24 * 3600000;
+    const selectedDate = new Date(dateStr + 'T12:00:00').getTime();
+    if (selectedDate < minBookTime) {
+      showToast('Las reservas deben hacerse con al menos 24h de anticipación', 'error');
+      return;
+    }
+    window._brSelectedDate = dateStr;
+    window._brSelectedHour = null;
+    window._brPricing = pricing;
+    const timeSection = document.getElementById('brTimeSection');
+    const dateLabel = document.getElementById('brDateLabel');
+    const slotsContainer = document.getElementById('brSlotsContainer');
+    const selectedSummary = document.getElementById('brSelectedSummary');
+    timeSection.style.display = 'block';
+    dateLabel.textContent = 'Cargando horarios...';
+    slotsContainer.innerHTML = '';
+    selectedSummary.style.display = 'none';
+    document.getElementById('brSubmitBtn').disabled = true;
+    document.getElementById('brSubmitBtn').textContent = 'Selecciona fecha y horario';
+    document.getElementById('brSubmitBtn').style.opacity = '0.4';
+    // Load busy hours in real-time from both reservations and reservationRequests
     Promise.all([get(ref(db, 'reservations')), get(ref(db, 'reservationRequests'))]).then(([resSnap, reqSnap]) => {
       const busyHours = {};
-      // From reservations
       if (resSnap.exists()) {
         Object.entries(resSnap.val()).filter(([,r]) => r.status === 'active' && r.space === window._brSpace).forEach(([,r]) => {
           const d = new Date(r.startTime);
@@ -1702,7 +1724,6 @@
           busyHours[key].add(d.getHours());
         });
       }
-      // From reservationRequests (approved or pending)
       if (reqSnap.exists()) {
         Object.entries(reqSnap.val()).filter(([,r]) =>
           (r.status === 'approved' || r.status === 'pendingApproval') && r.space === window._brSpace
@@ -1719,40 +1740,40 @@
       allHours.forEach(h => {
         const time = `${String(h).padStart(2,'0')}:00`;
         const isBooked = booked.has(h);
-        html += `<button class="card-btn" style="font-size:12px;padding:8px 4px;text-align:center${isBooked ? ';opacity:0.35;cursor:not-allowed' : ''}" ${isBooked ? 'disabled' : `onclick="selectBRSlot('${dateStr}',${h},'${pricing}', this)`}>
+        html += `<button ${isBooked ? 'disabled style="opacity:0.35;cursor:not-allowed"' : `onclick="selectBRSlot('${dateStr}',${h},this)" style="cursor:pointer"`} class="card-btn" style="font-size:12px;padding:8px 4px;text-align:center${isBooked ? ';opacity:0.35' : ''}">
           ${time}${isBooked ? '<br><small style="color:var(--red)">ocupado</small>' : ''}
         </button>`;
       });
-      document.getElementById('brSlotsGrid').innerHTML = html;
+      slotsContainer.innerHTML = html;
+      dateLabel.textContent = 'Horarios disponibles para ' + dateStr;
     });
   };
 
-  window.selectBRSlot = (date, hour, pricing, el) => {
-    window._brHour = hour;
-    window._brPricing = pricing;
+  window.selectBRSlot = (date, hour, el) => {
+    window._brSelectedDate = date;
+    window._brSelectedHour = hour;
     // Highlight selected slot
-    document.querySelectorAll('#brSlotsGrid button').forEach(b => b.style.borderColor = '');
-    if (el) el.style.borderColor = 'var(--accent)';
-    // Show form fields
-    document.querySelectorAll('#brTimeSlots .form-group').forEach(f => f.style.display = 'block');
-    // Append confirmation + submit button
-    const confirmDiv = document.getElementById('brConfirmMsg');
-    if (confirmDiv) confirmDiv.remove();
-    document.getElementById('brSlotsGrid').innerHTML += `<div id="brConfirmMsg" style="grid-column:1/-1;text-align:center;padding:10px;background:rgba(245,200,66,0.1);border-radius:8px;font-size:13px;color:var(--accent);margin-top:6px">
-      ✓ ${date} a las ${String(hour).padStart(2,'0')}:00 — Tarifa: ${pricing}
-    </div>
-    <div style="grid-column:1/-1;margin-top:8px">
-      <button class="modal-btn primary" onclick="submitBookingRequest(window._brSpace)" style="width:100%;padding:12px">Enviar solicitud</button>
-    </div>`;
+    document.querySelectorAll('#brSlotsContainer button').forEach(b => { b.style.borderColor = ''; b.style.background = ''; });
+    if (el) { el.style.borderColor = 'var(--accent)'; el.style.background = 'rgba(245,200,66,0.15)'; }
+    // Update summary
+    const summary = document.getElementById('brSelectedSummary');
+    const pricing = window._brPricing || '';
+    summary.innerHTML = '✓ ' + date + ' — ' + String(hour).padStart(2,'0') + ':00 hrs &nbsp;|&nbsp; Tarifa: ' + pricing;
+    summary.style.display = 'block';
+    // Enable submit button
+    const btn = document.getElementById('brSubmitBtn');
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.textContent = 'Enviar solicitud de reserva';
   };
 
   window.submitBookingRequest = (space) => {
     const user = auth.currentUser;
-    const date = window._brDate || document.getElementById('reqDate')?.value;
-    const hour = window._brHour;
-    const name = document.getElementById('brName')?.value?.trim() || document.getElementById('reqName')?.value?.trim();
-    const phone = document.getElementById('brPhone')?.value?.trim() || document.getElementById('reqPhone')?.value?.trim();
-    const notes = document.getElementById('brNotes')?.value?.trim() || document.getElementById('reqNotes')?.value?.trim();
+    const date = window._brSelectedDate;
+    const hour = window._brSelectedHour;
+    const name = document.getElementById('brName')?.value?.trim();
+    const phone = document.getElementById('brPhone')?.value?.trim();
+    const notes = document.getElementById('brNotes')?.value?.trim();
     if (!date || hour === undefined || !name) { showToast('Completa tu nombre y selecciona fecha y hora', 'error'); return; }
     const start = new Date(date + 'T' + String(hour).padStart(2,'0') + ':00').getTime();
     const end = start + 3600000; // 1 hour slots
@@ -1822,8 +1843,20 @@
           }
         });
       }
-      unsub();
-      if (!isMember) {
+      // Also load approved reservationRequests to show in member calendar
+      get(ref(db, 'reservationRequests')).then(reqSnap => {
+        if (reqSnap.exists()) {
+          Object.entries(reqSnap.val()).forEach(([k, r]) => {
+            if (r.space === space && (r.status === 'approved' || r.status === 'pendingApproval')) {
+              const d = new Date(r.startTime);
+              const key = d.toISOString().split('T')[0];
+              if (!calData[key]) calData[key] = [];
+              calData[key].push(r);
+            }
+          });
+        }
+        unsub();
+        if (!isMember) {
         // Non-members: request booking approval + WhatsApp
         const pricing = { 'sala-juntas': '$450 + IVA / hora', 'sala-cine': '$1,500 + IVA / hora' };
         openModal(types[space] || space, `
