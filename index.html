@@ -834,6 +834,7 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getDatabase(app);
+  const FIREBASE_API_KEY = firebaseConfig.apiKey;
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   let isLogin = true;
@@ -862,11 +863,25 @@
 
     if (isLogin) {
       btn.disabled = true; btn.textContent = 'Cargando...';
-      signInWithEmailAndPassword(auth, email, password)
-        .then(() => { window.location.reload(); })
-        .catch(e => { showError(friendlyError(e.code)); btn.disabled = false; btn.textContent = 'Entrar'; });
+      // Use fetch directly for sign-in with new identitytoolkit endpoint
+      fetch('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=' + FIREBASE_API_KEY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, returnSecureToken: true })
+      }).then(r => r.json()).then(data => {
+        if (data.error) {
+          showError(friendlyError(data.error.message));
+          btn.disabled = false; btn.textContent = 'Entrar';
+        } else {
+          // Store token and reload
+          localStorage.setItem('firebaseToken', data.idToken);
+          localStorage.setItem('firebaseUid', data.localId);
+          localStorage.setItem('firebaseEmail', data.email);
+          window.location.reload();
+        }
+      }).catch(e => { showError('Error de conexion'); btn.disabled = false; btn.textContent = 'Entrar'; });
     } else {
-      // Registration — validate extra fields
+      // Registration
       const nombre = document.getElementById('regNombre').value.trim();
       const apellido = document.getElementById('regApellido').value.trim();
       const domicilio = document.getElementById('regDomicilio').value.trim();
@@ -875,10 +890,17 @@
       if (password.length < 6) { showError('La contraseña debe tener al menos 6 caracteres'); return; }
 
       btn.disabled = true; btn.textContent = 'Creando cuenta...';
-      createUserWithEmailAndPassword(auth, email, password)
-        .then((userCredential) => {
+      fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FIREBASE_API_KEY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, returnSecureToken: true })
+      }).then(r => r.json()).then(data => {
+        if (data.error) {
+          showError(friendlyError(data.error.message));
+          btn.disabled = false; btn.textContent = 'Crear cuenta';
+        } else {
           // Create user profile in DB
-          const uid = userCredential.user.uid;
+          const uid = data.localId;
           return set(ref(db, 'users/' + uid), {
             name: nombre + ' ' + apellido,
             firstName: nombre,
@@ -890,41 +912,71 @@
             isAdmin: false,
             createdAt: Date.now()
           });
-        })
-        .then(() => { window.location.reload(); })
-        .catch(e => { showError(friendlyError(e.code)); btn.disabled = false; btn.textContent = 'Crear cuenta'; });
+        }
+      }).then(() => { window.location.reload(); })
+        .catch(e => { showError('Error de conexion'); btn.disabled = false; btn.textContent = 'Crear cuenta'; });
     }
   };
 
-  window.logout = () => signOut(auth).then(() => window.location.reload());
+  window.logout = () => {
+    localStorage.removeItem('firebaseToken');
+    localStorage.removeItem('firebaseUid');
+    localStorage.removeItem('firebaseEmail');
+    signOut(auth).then(() => window.location.reload()).catch(() => window.location.reload());
+  };
 
-  window.friendlyError = (code) => {
+  window.friendlyError = (msg) => {
     const map = {
-      'auth/user-not-found': 'No hay cuenta con ese correo',
-      'auth/wrong-password': 'Contraseña incorrecta',
-      'auth/email-already-in-use': 'Ese correo ya tiene cuenta',
-      'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres',
-      'auth/invalid-email': 'Correo inválido',
-      'auth/too-many-requests': 'Demasiados intentos. Espera un momento',
+      'INVALID_EMAIL': 'Correo inválido',
+      'EMAIL_NOT_FOUND': 'No hay cuenta con ese correo',
+      'INVALID_PASSWORD': 'Contraseña incorrecta',
+      'EMAIL_EXISTS': 'Ese correo ya tiene cuenta',
+      'WEAK_PASSWORD': 'La contraseña debe tener al menos 6 caracteres',
+      'TOO_MANY_ATTEMPTS': 'Demasiados intentos. Espera un momento',
+      'USER_DISABLED': 'Esta cuenta fue desactivada',
+      'INVALID_ID_TOKEN': 'Sesión expirada. Vuelve a iniciar.',
     };
-    return map[code] || 'Error al ' + (isLogin ? 'entrar' : 'crear cuenta');
+    return map[msg] || 'Error: ' + msg;
   };
 
   // ── Auth state ───────────────────────────────────────────────────────────
+  // Check for stored token first, then validate with Firebase
+  const storedToken = localStorage.getItem('firebaseToken');
+  const storedUid = localStorage.getItem('firebaseUid');
+  const storedEmail = localStorage.getItem('firebaseEmail');
+  
+  if (storedToken && storedUid) {
+    // Validate token by fetching user info
+    fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + FIREBASE_API_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: storedToken })
+    }).then(r => r.json()).then(data => {
+      if (data.users && data.users.length > 0) {
+        const user = { uid: storedUid, email: storedEmail || data.users[0].email };
+        document.getElementById('authScreen').style.display = 'none';
+        document.getElementById('dashboardSection').style.display = 'block';
+        document.getElementById('logoutBtn').style.display = 'block';
+        loadUserData(user);
+      } else {
+        localStorage.removeItem('firebaseToken');
+        localStorage.removeItem('firebaseUid');
+        localStorage.removeItem('firebaseEmail');
+      }
+    }).catch(() => {
+      localStorage.removeItem('firebaseToken');
+      localStorage.removeItem('firebaseUid');
+      localStorage.removeItem('firebaseEmail');
+    });
+  }
+  
+  // Also listen for auth state changes from Firebase (for other sessions)
   onAuthStateChanged(auth, user => {
-    if (user) {
+    if (user && !localStorage.getItem('firebaseToken')) {
       document.getElementById('authScreen').style.display = 'none';
-      document.getElementById('dashboardSection').style.display = 'none';
-      document.getElementById('estadoCuentaSection').style.display = 'none';
-      document.getElementById('adminSection').style.display = 'none';
       document.getElementById('dashboardSection').style.display = 'block';
       document.getElementById('logoutBtn').style.display = 'block';
       loadUserData(user);
-    } else {
-      document.getElementById('authScreen').style.display = 'flex';
-      document.getElementById('dashboardSection').style.display = 'none';
-      document.getElementById('estadoCuentaSection').style.display = 'none';
-      document.getElementById('adminSection').style.display = 'none';
     }
   });
 
