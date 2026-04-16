@@ -945,6 +945,7 @@
     const dashSub = document.getElementById('dashSub');
     const memberHoursSection = document.getElementById('memberHoursSection');
     const nonMemberPricing = document.getElementById('nonMemberPricing');
+    window._isMember = isMember;
     if (!badge) { console.warn('memberStatusBadge not found'); return; }
     if (isMember) {
       badge.style.display = 'block';
@@ -988,11 +989,19 @@
         const timeStr = d.toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'});
         const spaceMap = { 'sala-juntas': '📅 Sala de Juntas', 'sala-cine': '🔍 Vision Room' };
         const canReschedule = (r.startTime - now) >= 48 * 3600000;
-        const badge = canReschedule ? '<span class="badge" style="background:rgba(79,142,247,0.15);color:var(--accent2)">Puede reagendar</span>' : '<span class="badge overdue">En menos de 48h</span>';
+        const canCancel = canReschedule; // cancel with <48h = lose the hour
+        const hoursUsed = ((r.endTime || r.startTime) - r.startTime) / 3600000;
+        const badge = canReschedule
+          ? '<span class="badge" style="background:rgba(79,142,247,0.15);color:var(--accent2)">Puede reagendar</span>'
+          : '<span class="badge overdue">En menos de 48h — sin cambios</span>';
         html += `<div class="notice-item" style="border-left-color:var(--accent2)">
           <div class="notice-date">${dateStr} a las ${timeStr} — ${spaceMap[r.space] || r.space}</div>
           <div class="notice-text" style="margin-bottom:6px">${r.notes || 'Sin notas'}</div>
-          <div style="display:flex;align-items:center;justify-content:space-between">${badge}<button class="action-btn" onclick="openRescheduleModal('${k}')">Reagendar</button></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            ${badge}
+            <button class="action-btn" style="${canReschedule ? '' : 'opacity:0.4;cursor:not-allowed'}" ${canReschedule ? `onclick="openRescheduleModal('${k}')"` : 'disabled'} title="${canReschedule ? 'Reagendar' : 'Solo con 48h de anticipacion'}">Reagendar</button>
+            <button class="action-btn" onclick="cancelReservation('${k}', ${canCancel ? 'true' : 'false'}, ${hoursUsed}, '${r.space}')" style="color:var(--red);border-color:rgba(239,68,68,0.3)">Cancelar${canCancel ? '' : ' (pierde hora)'}</button>
+          </div>
         </div>`;
       });
       el.innerHTML = html;
@@ -1024,6 +1033,17 @@
           <button class="modal-btn primary" onclick="submitReschedule('${resKey}')">Guardar cambios</button>
         </div>
       `);
+    });
+  };
+
+  window.cancelReservation = (resKey, refundHours, space) => {
+    if (!confirm('Estas seguro de cancelar esta reservacion?' + (refundHours ? '' : '\nPerderas la hora invertida'))) return;
+    const user = auth.currentUser;
+    if (!user) return;
+    const updates = refundHours ? { status: 'cancelled', refunded: true } : { status: 'cancelled', refunded: false };
+    update(ref(db, 'reservations/' + resKey), updates).then(() => {
+      showToast(refundHours ? 'Reservacion cancelada. Hora devuelta.' : 'Reservacion cancelada. Hora perdida.', refundHours ? 'success' : 'error');
+      loadMyReservations(user.uid);
     });
   };
 
@@ -1305,8 +1325,78 @@
   let calData = {};
 
 
+  window.openBookingRequestForm = (space) => {
+    closeModal();
+    const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Vision Room' };
+    const today = new Date().toISOString().split('T')[0];
+    const pricing = { 'sala-juntas': '$450 + IVA/hr', 'sala-cine': '$1,500 + IVA/hr' };
+    openModal('Solicitud de Reserva — ' + types[space], `
+      <div class="form-group">
+        <label class="form-label">Fecha deseada</label>
+        <input type="date" class="form-input" id="reqDate" min="${today}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hora de inicio</label>
+        <input type="time" class="form-input" id="reqTime" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Duracion (horas)</label>
+        <input type="number" class="form-input" id="reqHours" min="1" value="1" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nombre completo</label>
+        <input type="text" class="form-input" id="reqName" placeholder="Tu nombre" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Telefono de contacto</label>
+        <input type="tel" class="form-input" id="reqPhone" placeholder="+52 444 ..." />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas (opcional)</label>
+        <input type="text" class="form-input" id="reqNotes" placeholder="Evento o reunion" />
+      </div>
+      <div style="background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:var(--text2)">
+        Tarifa: ${pricing[space]} — El admin revisara tu solicitud y te contactara por WhatsApp para coordinar el pago.
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+        <button class="modal-btn primary" onclick="submitBookingRequest('${space}')">Enviar solicitud</button>
+      </div>
+    `);
+  };
+
+  window.submitBookingRequest = (space) => {
+    const user = auth.currentUser;
+    const date = document.getElementById('reqDate').value;
+    const time = document.getElementById('reqTime').value;
+    const hours = parseInt(document.getElementById('reqHours').value) || 1;
+    const name = document.getElementById('reqName').value.trim();
+    const phone = document.getElementById('reqPhone').value.trim();
+    const notes = document.getElementById('reqNotes').value.trim();
+    if (!date || !time || !name) { showToast('Completa los campos obligatorios', 'error'); return; }
+    const start = new Date(date + 'T' + time).getTime();
+    const end = start + hours * 3600000;
+    const req = {
+      space,
+      userId: user ? user.uid : 'guest',
+      userName: name,
+      userPhone: phone,
+      startTime: start,
+      endTime: end,
+      notes,
+      type: 'request', // distinguishes from member direct booking
+      status: 'pendingApproval',
+      createdAt: Date.now(),
+    };
+    push(ref(db, 'reservationRequests'), req).then(() => {
+      closeModal();
+      showToast('Solicitud enviada! Te contactaremos por WhatsApp pronto ✅', 'success');
+    });
+  };
+
   window.openCalendarView = (space) => {
     calSpace = space;
+    const isMember = window._isMember;
     const types = { 'sala-juntas': 'Sala de Juntas', 'sala-cine': 'Sala Cine / Didáctica' };
     calYear = new Date().getFullYear();
     calMonth = new Date().getMonth();
@@ -1324,7 +1414,31 @@
         });
       }
       unsub();
-      showCalendarModal(types[space] || space);
+      if (!isMember) {
+        // Non-members: request booking approval + WhatsApp
+        const pricing = { 'sala-juntas': '$450 + IVA / hora', 'sala-cine': '$1,500 + IVA / hora' };
+        openModal(types[space] || space, `
+          <div style="text-align:center;padding:10px 0">
+            <div style="font-size:48px;margin-bottom:12px">📋</div>
+            <div style="font-size:16px;font-weight:700;margin-bottom:8px">Reservacion para No Miembros</div>
+            <div style="color:var(--text2);font-size:13px;margin-bottom:20px">Para reservar necesitas aprobacion del administrador</div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;text-align:left">
+              <div style="font-size:13px;margin-bottom:8px"><strong>Tarifa:</strong> ${pricing[space]}</div>
+              <div style="font-size:13px;margin-bottom:8px"><strong>Proceso:</strong></div>
+              <ol style="font-size:12px;color:var(--text2);padding-left:20px;line-height:1.8">
+                <li>Llena la solicitud de reserva</li>
+                <li>Se enviara a aprobacion del admin</li>
+                <li>Recibe un WhatsApp para coordinar el pago</li>
+                <li>Una vez pagado, se confirma tu reserva</li>
+              </ol>
+            </div>
+            <button class="modal-btn primary" onclick="openBookingRequestForm('${space}')" style="margin-bottom:10px;width:100%">Llenar solicitud de reserva</button>
+            <a href="https://wa.me/5214445752667?text=${encodeURIComponent('Hola! Quiero reservar ' + (space === 'sala-juntas' ? 'Sala de Juntas' : 'Vision Room') + '. Mandame los datos para coordinar el pago.')}" target="_blank" style="display:block;text-align:center;padding:10px;background:rgba(34,197,94,0.15);color:var(--green);border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">💬 Coordinar pago por WhatsApp</a>
+          </div>
+        `);
+      } else {
+        showCalendarModal(types[space] || space);
+      }
     });
   };
 
