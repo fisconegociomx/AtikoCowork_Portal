@@ -1690,11 +1690,23 @@
     document.getElementById('brNotesGroup').style.display = 'block';
     selectedDateEl.textContent = dateStr;
     window._brDate = dateStr;
-    // Load existing reservations to show busy slots
-    get(ref(db, 'reservations')).then(snap => {
+    // Load existing reservations + approved/pending requests to show busy slots
+    Promise.all([get(ref(db, 'reservations')), get(ref(db, 'reservationRequests'))]).then(([resSnap, reqSnap]) => {
       const busyHours = {};
-      if (snap.exists()) {
-        Object.entries(snap.val()).filter(([,r]) => r.status === 'active' && r.space === window._brSpace).forEach(([,r]) => {
+      // From reservations
+      if (resSnap.exists()) {
+        Object.entries(resSnap.val()).filter(([,r]) => r.status === 'active' && r.space === window._brSpace).forEach(([,r]) => {
+          const d = new Date(r.startTime);
+          const key = d.toISOString().split('T')[0];
+          if (!busyHours[key]) busyHours[key] = new Set();
+          busyHours[key].add(d.getHours());
+        });
+      }
+      // From reservationRequests (approved or pending)
+      if (reqSnap.exists()) {
+        Object.entries(reqSnap.val()).filter(([,r]) =>
+          (r.status === 'approved' || r.status === 'pendingApproval') && r.space === window._brSpace
+        ).forEach(([,r]) => {
           const d = new Date(r.startTime);
           const key = d.toISOString().split('T')[0];
           if (!busyHours[key]) busyHours[key] = new Set();
